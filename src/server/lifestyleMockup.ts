@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { generateWithLocalImageApi, LocalImageApiError } from './localImageApi';
 
 export interface LifestyleMockupRequest {
   designImageUrl?: string;
@@ -126,6 +127,45 @@ ${input.sceneReferenceImages?.length ? '- Use scene-only references to guide the
 - Variation: #${input.variationIndex ?? 1}.
 
 Return a single photorealistic image.`;
+
+  const provider = process.env.LIFESTYLE_IMAGE_PROVIDER?.trim().toLowerCase() || 'local';
+
+  if (provider === 'local') {
+    let referenceImage;
+    try {
+      referenceImage = await toInlineImage(input.productMockupUrl || input.designImageUrl);
+    } catch (error) {
+      if (error instanceof LifestyleMockupError) throw error;
+      throw new LifestyleMockupError('Could not load the reference image for local generation.', 502);
+    }
+
+    const localPrompt = [
+      'Photorealistic premium commercial lifestyle product photograph.',
+      `Show one ${input.modelName || 'phone case'} (${brandName}), with the case silhouette and camera opening guided by the reference image and catalog details.`,
+      `Scene: ${input.userScenePrompt || 'a premium product photograph with the case back facing the camera.'}`,
+      `Styling: ${input.styleDirection || 'clean, natural product photography.'}`,
+      `Case construction: ${input.caseType || 'protective phone case'}. Physical features: ${input.caseShapeDesc || 'use the case shape visible in the reference image'}.`,
+      'Use the provided reference image as the image-to-image source. Keep its case and visible artwork recognizable while adapting the environment to the requested scene.',
+      'One phone case only, case back visible, sharp product, natural materials, realistic contact shadows, clean anatomy if a hand is requested.',
+      `Variation ${input.variationIndex ?? 1}.`,
+    ].join('\n');
+
+    try {
+      return await generateWithLocalImageApi({
+        referenceImage: referenceImage.inlineData,
+        prompt: localPrompt,
+        negativePrompt: 'illustration, drawing, 3d render, extra phone, multiple cases, wrong camera opening, distorted phone, blurry, text, logo, watermark, duplicate device',
+        variationIndex: input.variationIndex ?? 1,
+      });
+    } catch (error) {
+      if (error instanceof LocalImageApiError) throw new LifestyleMockupError(error.message, error.statusCode);
+      throw error;
+    }
+  }
+
+  if (provider !== 'gemini') {
+    throw new LifestyleMockupError('LIFESTYLE_IMAGE_PROVIDER must be set to "local" or "gemini".', 503);
+  }
 
   let imageParts;
   try {

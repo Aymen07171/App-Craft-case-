@@ -250,44 +250,93 @@ router.post('/generate-etsy-listing', async (req, res) => {
     };
 
     let response: Awaited<ReturnType<typeof ai.models.generateContent>> | undefined;
+    let parsed: Record<string, unknown> | undefined;
     let generationError: unknown;
+    let gemmaImageFile: Awaited<ReturnType<typeof ai.files.upload>> | undefined;
     const modelPlan = [
-      { name: 'gemini-3.8-flash', attempts: 2 },
-      { name: 'gemini-3.7-flash', attempts: 1 },
-    ];
-    for (const model of modelPlan) {
-      for (let attempt = 0; attempt < model.attempts; attempt++) {
-        try {
-          response = await ai.models.generateContent({ model: model.name, ...generationRequest });
-          break;
-        } catch (error) {
-          generationError = error;
-          const status = Number((error as { status?: number })?.status);
-          const isTemporaryFailure = [429, 500, 503, 504].includes(status);
-          const hasFallback = model !== modelPlan[modelPlan.length - 1];
-          if (!isTemporaryFailure || (!hasFallback && attempt === model.attempts - 1)) throw error;
-          if (attempt < model.attempts - 1) {
-            await new Promise((resolve) => setTimeout(resolve, 800 * (2 ** attempt)));
+      { name: 'gemma-4-26b-a4b-it', attempts: 2, usesGemmaImageInput: true, usesSchema: false },
+      { name: 'gemma-4-31b-it', attempts: 1, usesGemmaImageInput: true, usesSchema: false },
+      { name: 'gemini-3.8-flash', attempts: 1, usesGemmaImageInput: false, usesSchema: true },
+      { name: 'gemini-3.7-flash', attempts: 1, usesGemmaImageInput: false, usesSchema: true },
+    ] as const;
+    const parseListingJson = (text: unknown) => {
+      if (typeof text !== 'string' || !text.trim()) {
+        throw Object.assign(new Error('The AI returned an empty listing.'), { status: 502 });
+      }
+      const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+      const start = cleaned.indexOf('{');
+      const end = cleaned.lastIndexOf('}');
+      if (start < 0 || end < start) {
+        throw Object.assign(new Error('The AI returned an invalid listing object.'), { status: 502 });
+      }
+      let value: unknown;
+      try {
+        value = JSON.parse(cleaned.slice(start, end + 1));
+      } catch {
+        throw Object.assign(new Error('The AI returned invalid JSON for the listing.'), { status: 502 });
+      }
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw Object.assign(new Error('The AI returned an invalid listing object.'), { status: 502 });
+      }
+      return value as Record<string, unknown>;
+    };
+
+    try {
+      for (const [modelIndex, model] of modelPlan.entries()) {
+        for (let attempt = 0; attempt < model.attempts; attempt++) {
+          try {
+            if (model.usesGemmaImageInput) {
+              if (!gemmaImageFile) {
+                const imageBytes = new Uint8Array(Buffer.from(imageMatch[2], 'base64'));
+                gemmaImageFile = await ai.files.upload({
+                  file: new Blob([imageBytes], { type: imageMatch[1] }),
+                  config: { mimeType: imageMatch[1], displayName: 'craft-case-listing-artwork' },
+                });
+              }
+              if (!gemmaImageFile.uri) {
+                throw Object.assign(new Error('Google AI did not return the uploaded artwork file.'), { status: 502 });
+              }
+              response = await ai.models.generateContent({
+                model: model.name,
+                contents: {
+                  parts: [
+                    { text: generationRequest.contents.parts[0].text },
+                    { fileData: { fileUri: gemmaImageFile.uri, mimeType: gemmaImageFile.mimeType || imageMatch[1] } },
+                  ],
+                },
+                config: { temperature: 0.4 },
+              });
+            } else {
+              response = await ai.models.generateContent({ model: model.name, ...generationRequest });
+            }
+            parsed = parseListingJson(response.text);
+            break;
+          } catch (error) {
+            response = undefined;
+            parsed = undefined;
+            generationError = error;
+            const status = Number((error as { status?: number })?.status);
+            const isTemporaryFailure = [408, 429, 500, 502, 503, 504].includes(status);
+            const canTryNextModel = modelIndex < modelPlan.length - 1;
+            const isModelSpecificFailure = status >= 400 && status < 500 && status !== 401 && status !== 403 && status !== 429;
+            if (!(isTemporaryFailure || isModelSpecificFailure) || (!canTryNextModel && attempt === model.attempts - 1)) throw error;
+            if (attempt < model.attempts - 1) {
+              await new Promise((resolve) => setTimeout(resolve, 800 * (2 ** attempt)));
+            }
           }
         }
+        if (response && parsed) break;
       }
-      if (response) break;
+    } finally {
+      if (gemmaImageFile?.name) {
+        try {
+          await ai.files.delete({ name: gemmaImageFile.name });
+        } catch {
+          console.warn('Could not remove the temporary listing artwork file from Google AI.');
+        }
+      }
     }
-    if (!response) throw generationError || new Error('Gemini did not return a listing.');
-
-    const rawContent = response.text;
-    if (typeof rawContent !== 'string' || !rawContent.trim()) {
-      throw new Error('The AI returned an empty listing.');
-    }
-
-    const jsonContent = rawContent
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```$/, '')
-      .trim();
-    const parsed = JSON.parse(jsonContent);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('The AI returned an invalid listing object.');
-    }
+    if (!response || !parsed) throw generationError || new Error('AI models did not return a listing.');
     const parsedFields = Object.fromEntries(
       Object.entries(parsed).map(([key, value]) => [key.replace(/[^a-z0-9]/gi, '').toLowerCase(), value])
     );
@@ -385,23 +434,23 @@ router.post('/generate-etsy-listing', async (req, res) => {
     const status = Number((error as { status?: number })?.status);
     if (status === 401 || status === 403) {
       return res.status(503).json({
-        error: 'Gemini rejected the API key. Check GEMINI_API_KEY in .env and restart the app.',
+        error: 'Google AI rejected the API key. Check GEMINI_API_KEY in .env and restart the app.',
       });
     }
     if (status === 429) {
       return res.status(503).json({
-        error: 'Gemini API quota is temporarily unavailable. Check the key’s quota or try again later.',
+        error: 'The free AI model quota is temporarily unavailable. Check the Google AI Studio quota or try again later.',
       });
     }
     if ([500, 503, 504].includes(status)) {
       return res.status(503).json({
-        error: 'Gemini is temporarily overloaded. Craft Case retried with a backup model; please try generating the listing again shortly.',
+        error: 'The free AI models are temporarily overloaded. Craft Case tried Gemma 4 and backup models; please retry shortly.',
       });
     }
     const detail = error instanceof Error ? error.message : String(error);
     const safeDetail = apiKey ? detail.replaceAll(apiKey, '[redacted API key]') : detail;
     return res.status(502).json({
-      error: `Gemini listing generation failed: ${safeDetail}`,
+      error: `AI listing generation failed: ${safeDetail}`,
     });
   }
 });

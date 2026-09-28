@@ -38,9 +38,9 @@ interface WorkflowStudioProps {
 
 const STEPS: { id: MockupWorkflowStep; title: string; description: string }[] = [
   { id: 'upload-design', title: 'Upload design', description: 'Start with your original case artwork.' },
-  { id: 'product-reference', title: 'Select product reference', description: 'Choose the exact Printify case model to preserve.' },
+  { id: 'product-reference', title: 'Select product reference', description: 'Choose Printify models and add a product photo to guide generation.' },
   { id: 'scene-description', title: 'Describe the scene', description: 'Set the person, place, lighting, and composition.' },
-  { id: 'generate-mockup', title: 'Generate mockup', description: 'Generation will use the artwork and case reference as fixed inputs.' },
+  { id: 'generate-mockup', title: 'Generate mockup', description: 'Generate locally on your computer with ComfyUI and a reference image.' },
   { id: 'preview-result', title: 'Preview result', description: 'Review the generated lifestyle image.' },
   { id: 'download-result', title: 'Download result', description: 'Export the approved mockup.' },
 ];
@@ -106,7 +106,7 @@ export const WorkflowStudio: React.FC<WorkflowStudioProps> = ({
                 </div>
                 <h2 className="text-lg font-semibold text-white">Bring your case artwork</h2>
                 <p className="mt-2 max-w-lg text-sm leading-6 text-slate-400">
-                  Your uploaded image is the source artwork. The lifestyle scene must not redraw, restyle, or replace it.
+                  The local image model uses your artwork or product reference to guide the scene. It may change fine details, so review the result before publishing.
                 </p>
                 <input
                   ref={fileInputRef}
@@ -232,6 +232,7 @@ export const WorkflowStudio: React.FC<WorkflowStudioProps> = ({
                 ) : (
                   <p className="text-sm text-slate-500">Choose one or more models above.</p>
                 )}
+                <p className="mt-3 text-xs leading-5 text-slate-500">For the closest artwork match, add a product photo that already shows your design. Local image-to-image generation can alter small details.</p>
               </section>
             </div>
           )}
@@ -251,7 +252,7 @@ export const WorkflowStudio: React.FC<WorkflowStudioProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className="text-sm font-medium text-white">Scene reference images</h2>
-                    <p className="mt-1 text-xs text-slate-400">Guide the setting, props, or mood for every selected case.</p>
+                    <p className="mt-1 text-xs text-slate-400">Gemini mode can use these as visual references. Local ComfyUI mode uses the written scene description.</p>
                   </div>
                   <input
                     ref={sceneReferenceInputRef}
@@ -328,7 +329,7 @@ export const WorkflowStudio: React.FC<WorkflowStudioProps> = ({
               </div>
               <h2 className="text-lg font-semibold text-white">Generate lifestyle mockup</h2>
               <p className="mt-2 max-w-md text-sm leading-6 text-slate-400">
-                One independent scene will be generated for each of the {selectedReferences.length} selected cases, with the same theme and model-specific geometry.
+                One image will be generated locally for each of the {selectedReferences.length} selected cases. The selected product photo guides the result; no hosted image API quota is used.
               </p>
               {workflow.generationError && (
                 <p role="alert" className="mt-4 max-w-md rounded-lg border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-left text-sm text-rose-200">

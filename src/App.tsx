@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Download } from 'lucide-react';
+import JSZip from 'jszip';
 import { WorkflowNav } from './components/WorkflowNav';
 import { DesignStudio } from './design-studio/components/DesignStudio';
 import { WorkflowStudio } from './components/WorkflowStudio';
@@ -120,6 +122,8 @@ export default function App() {
   const [googleToken, setGoogleToken] = useState<string | null>(null);
   const [googleEmail, setGoogleEmail] = useState<string>('');
   const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
+  const [isDownloadingAssets, setIsDownloadingAssets] = useState(false);
+  const [assetDownloadError, setAssetDownloadError] = useState<string | null>(null);
 
   // 4. Design Studio State (Preserved)
   const [designs, setDesigns] = useState<GeneratedDesign[]>([INITIAL_VITRAIL_DESIGN]);
@@ -501,6 +505,67 @@ export default function App() {
     setPipelineStep('design');
   };
 
+  const handleDownloadDesignAndMockups = async () => {
+    const designUrl = activeDesign?.imageUrl || product.design.localUrl;
+    const generatedMockups = mockupWorkflow.generatedMockups
+      .filter((mockup) => mockup.imageUrl)
+      .map((mockup) => ({ name: mockup.modelName, imageUrl: mockup.imageUrl as string }));
+    const savedMockups = product.mockups
+      .filter((mockup) => mockup.localUrl)
+      .map((mockup) => ({ name: mockup.modelName, imageUrl: mockup.localUrl as string }));
+    const mockups = generatedMockups.length > 0 ? generatedMockups : savedMockups;
+
+    if (!designUrl || mockups.length === 0) return;
+
+    setIsDownloadingAssets(true);
+    setAssetDownloadError(null);
+
+    try {
+      const zip = new JSZip();
+      const safeName = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'image';
+      const addImage = async (folder: string, name: string, imageUrl: string) => {
+        const response = await fetch(imageUrl);
+        if (!response.ok) throw new Error(`Could not download ${name} (${response.status}).`);
+        const image = await response.blob();
+        if (!image.type.startsWith('image/')) throw new Error(`${name} is not a valid image file.`);
+        const extension = image.type.includes('jpeg') ? 'jpg' : image.type.split('/')[1] || 'png';
+        zip.file(`${folder}/${safeName(name)}.${extension}`, image);
+      };
+
+      const designName = activeDesign?.title || product.design.title || 'design';
+      await addImage('design', designName, designUrl);
+      await Promise.all(
+        mockups.map((mockup, index) =>
+          addImage('mockups', `${String(index + 1).padStart(2, '0')}-${mockup.name}`, mockup.imageUrl),
+        ),
+      );
+      zip.file('product-info.json', JSON.stringify({
+        productId: product.productId,
+        design: designName,
+        mockups: mockups.map((mockup) => mockup.name),
+        exportedAt: new Date().toISOString(),
+      }, null, 2));
+
+      const archive = await zip.generateAsync({ type: 'blob' });
+      const archiveUrl = URL.createObjectURL(archive);
+      const link = document.createElement('a');
+      link.href = archiveUrl;
+      link.download = `${safeName(product.productId)}-design-and-mockups.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(archiveUrl), 30_000);
+    } catch (error) {
+      console.error('Could not prepare design and mockup downloads:', error);
+      setAssetDownloadError(error instanceof Error ? error.message : 'Could not prepare the asset download.');
+    } finally {
+      setIsDownloadingAssets(false);
+    }
+  };
+
+  const hasDownloadableMockups = mockupWorkflow.generatedMockups.some((mockup) => mockup.imageUrl) ||
+    product.mockups.some((mockup) => mockup.localUrl);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
       {/* Unified 5-Stage Pipeline Header */}
@@ -561,10 +626,20 @@ export default function App() {
                   Step 2: Printify Lifestyle Mockup Generation
                 </h1>
                 <p className="text-xs text-slate-400 mt-1">
-                  Generate photorealistic lifestyle mockups preserving the artwork of <span className="font-mono text-indigo-300 font-semibold">{product.productId}</span> across specific Printify phone models.
+                  Generate lifestyle mockups locally with ComfyUI, guided by the artwork and selected Printify case references for <span className="font-mono text-indigo-300 font-semibold">{product.productId}</span>.
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={handleDownloadDesignAndMockups}
+                disabled={isDownloadingAssets || !hasDownloadableMockups || !(activeDesign?.imageUrl || product.design.localUrl)}
+                className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-3 py-2 text-xs font-semibold text-indigo-200 transition hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Download className="h-4 w-4" />
+                {isDownloadingAssets ? 'Preparing ZIP…' : 'Download design + mockups'}
+              </button>
             </div>
+            {assetDownloadError && <p role="alert" className="text-sm text-rose-300">{assetDownloadError}</p>}
 
             <WorkflowStudio
               workflow={mockupWorkflow}
@@ -659,13 +734,13 @@ export default function App() {
           <div className="space-y-6">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div>
-                <h1 className="text-xl font-bold text-white sm:text-2xl">Step 6: Create on Printify</h1>
+                <h1 className="text-xl font-bold text-white sm:text-2xl">Step 6: Prepare & publish on Printify</h1>
                 <p className="mt-1 text-xs text-slate-400">
-                  Upload this product’s design and generated mockups, select the case variants, and create a Printify draft.
+                  Select this product’s artwork and mockups, set case variants, review your profit, and create or publish a Printify product.
                 </p>
               </div>
             </div>
-            <PrintifyPublishPanel product={product} onUpdateProduct={handleUpdateProduct} />
+            <PrintifyPublishPanel product={product} designs={designs} onUpdateProduct={handleUpdateProduct} />
           </div>
         )}
       </main>

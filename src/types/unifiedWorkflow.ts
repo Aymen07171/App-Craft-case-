@@ -89,11 +89,48 @@ export interface UnifiedProductRecord {
     variantIds: string[]; // list of variant IDs or comma-separated
     selectedModels: string[];
     shopId?: string;
-    status?: 'not_connected' | 'ready' | 'publishing' | 'created' | 'failed';
+    status?: 'not_connected' | 'ready' | 'draft' | 'uploading' | 'published' | 'publishing' | 'created' | 'failed' | 'error';
     uploadedImageIds?: string[];
+    selectedMockupSlots?: number[];
+    variantProductionCosts?: Record<string, number>;
     productUrl?: string;
+    publishedProductUrl?: string;
+    productStatusCheckedAt?: string;
     lastError?: string;
     lastAttemptAt?: string;
+  };
+
+  // Product-specific pricing inputs, stored with this product record.
+  pricing?: {
+    currency: 'USD';
+    productionCost: number;
+    productionCostSource: 'printify' | 'manual';
+    shippingCost: number;
+    shippingCostSource: 'printify' | 'manual';
+    shippingCountryCode: string;
+    shippingMethod: 'standard' | 'priority' | 'express' | 'economy';
+    printifyFees: number;
+    fulfillmentOther: number;
+    etsySellerCountry: 'US' | 'MA' | 'OTHER';
+    etsyListingFee: number;
+    etsyTransactionRate: number;
+    etsyPaymentProcessingRate: number;
+    etsyPaymentProcessingFixed: number;
+    etsyOffsiteAdsEnabled: boolean;
+    etsyOffsiteAdsRate: number;
+    etsyOffsiteAdsOrderCap: number;
+    etsyRegulatoryRate: number;
+    etsyOtherFees: number;
+    customerShippingCharged: number;
+    designGenerationCost: number;
+    mockupGenerationCost: number;
+    advertisingCost: number;
+    marketingCost: number;
+    otherExpenses: number;
+    sellingPrice: number;
+    targetMode: 'price' | 'margin' | 'profit';
+    targetMargin: number;
+    targetProfit: number;
   };
 
   // Automation & status tracking for Make.com / Etsy / Printify
