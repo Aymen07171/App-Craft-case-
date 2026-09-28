@@ -165,7 +165,10 @@ Return a single photorealistic image.`;
       throw new LifestyleMockupError('Gemini rejected the API key. Check GEMINI_API_KEY.', 401);
     }
     if (status === 429) {
-      throw new LifestyleMockupError('Gemini API quota is unavailable. Check your Google AI quota or try again later.', 429);
+      throw new LifestyleMockupError(
+        'Gemini image quota is unavailable. This lifestyle mockup uses your artwork and product photos as visual references, so the text-to-image fallback cannot preserve them. Please retry after the Gemini quota resets.',
+        429,
+      );
     }
     console.error('Gemini lifestyle image generation failed:', error);
     throw new LifestyleMockupError('Gemini could not generate the lifestyle image. Check server logs for details.', 502);

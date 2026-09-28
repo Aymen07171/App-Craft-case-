@@ -11,6 +11,12 @@ import {
   LifestyleMockupError,
   LifestyleMockupRequest,
 } from './src/server/lifestyleMockup';
+import {
+  describeHuggingFaceImageError,
+  generateHuggingFaceImage,
+  getQuotaStatus,
+  isGeminiQuotaError,
+} from './src/server/imageGenerationFallback';
 
 dotenv.config();
 
@@ -47,8 +53,8 @@ const getGeminiClient = () => {
 
 // API: Generate Design Artwork
 app.post('/api/generate-design', async (req, res) => {
+  const { prompt, aspectRatio = '9:16' } = req.body || {};
   try {
-    const { prompt, aspectRatio = '9:16' } = req.body;
     if (!prompt) {
       return res.status(400).json({ error: 'Prompt is required' });
     }
@@ -95,6 +101,23 @@ app.post('/api/generate-design', async (req, res) => {
     return res.json({ imageUrl, text: descriptionText });
   } catch (error: any) {
     console.error('Error generating design:', error);
+    if (isGeminiQuotaError(error)) {
+      const allowedRatios = ['9:16', '1:1', '3:4', '4:3', '16:9'] as const;
+      const ratio = (allowedRatios as readonly string[]).includes(String(aspectRatio))
+        ? String(aspectRatio) as (typeof allowedRatios)[number]
+        : '9:16';
+      try {
+        const fallback = await generateHuggingFaceImage(String(prompt || ''), ratio);
+        console.info(`Generated design with Hugging Face fallback model ${fallback.model}.`);
+        return res.json({ imageUrl: fallback.imageUrl, text: '', provider: 'Hugging Face' });
+      } catch (fallbackError) {
+        console.error('Hugging Face design fallback failed:', fallbackError);
+        const fallbackMessage = fallbackError instanceof Error && fallbackError.message.includes('not configured')
+          ? fallbackError.message
+          : describeHuggingFaceImageError(fallbackError);
+        return res.status(429).json({ error: `Gemini image quota is unavailable. ${fallbackMessage}` });
+      }
+    }
     const msg = error?.message || 'Failed to generate design';
     let userMsg = msg;
     if (msg.includes('401') || msg.includes('UNAUTHENTICATED') || msg.includes('authentication credential')) {
@@ -252,6 +275,11 @@ Clean e-commerce product catalog shot. No hands, no people, no lifestyle backgro
     return res.json({ imageUrl });
   } catch (error: any) {
     console.error('Error generating case mockup:', error);
+    if (isGeminiQuotaError(error)) {
+      return res.status(429).json({
+        error: 'Gemini image quota is unavailable. This mockup uses your artwork as a visual reference; the text-to-image fallback cannot preserve that artwork. Please retry after the Gemini quota resets.',
+      });
+    }
     const msg = error?.message || 'Failed to generate case mockup';
     let userMsg = msg;
     if (msg.includes('401') || msg.includes('UNAUTHENTICATED') || msg.includes('authentication credential')) {

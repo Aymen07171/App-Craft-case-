@@ -1,11 +1,23 @@
 import express from 'express';
 import { GoogleGenAI, Type } from '@google/genai';
+import {
+  describeHuggingFaceImageError,
+  generateHuggingFaceImage,
+  getQuotaStatus,
+  isGeminiQuotaError,
+} from './imageGenerationFallback';
 const router = express.Router();
 
 // API: Generate design artwork with Gemini image generation
 router.post('/generate-design', async (req, res) => {
+  const { prompt, aspectRatio = '9:16', seed } = req.body || {};
+  const allowedRatios = ['9:16', '1:1', '3:4', '4:3', '16:9'] as const;
+  const requestedRatio = String(aspectRatio);
+  const ratio = (allowedRatios as readonly string[]).includes(requestedRatio)
+    ? requestedRatio as (typeof allowedRatios)[number]
+    : '9:16';
+  const variation = Number.isFinite(Number(seed)) ? Number(seed) : Math.floor(Math.random() * 1_000_000_000);
   try {
-    const { prompt, aspectRatio = '9:16', seed } = req.body;
     if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
       return res.status(400).json({ error: 'Prompt is required' });
     }
@@ -16,12 +28,6 @@ router.post('/generate-design', async (req, res) => {
       });
     }
 
-    const allowedRatios = ['9:16', '1:1', '3:4', '4:3', '16:9'] as const;
-    const requestedRatio = String(aspectRatio);
-    const ratio = (allowedRatios as readonly string[]).includes(requestedRatio)
-      ? requestedRatio as (typeof allowedRatios)[number]
-      : '9:16';
-    const variation = Number.isFinite(Number(seed)) ? Number(seed) : Math.floor(Math.random() * 1_000_000_000);
     const dimensions: Record<(typeof allowedRatios)[number], { width: number; height: number }> = {
       '9:16': { width: 768, height: 1344 },
       '1:1': { width: 1024, height: 1024 },
@@ -52,7 +58,26 @@ router.post('/generate-design', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Error generating design with Gemini:', error);
-    const status = Number(error?.status || error?.statusCode);
+    if (isGeminiQuotaError(error)) {
+      try {
+        const fallback = await generateHuggingFaceImage(prompt.trim(), ratio, variation);
+        console.info(`Generated design with Hugging Face fallback model ${fallback.model}.`);
+        return res.json({
+          ...fallback,
+          seed: variation,
+          aspectRatio: ratio,
+          provider: 'Hugging Face',
+        });
+      } catch (fallbackError) {
+        console.error('Hugging Face design fallback failed:', fallbackError);
+        const fallbackMessage = fallbackError instanceof Error && fallbackError.message.includes('not configured')
+          ? fallbackError.message
+          : describeHuggingFaceImageError(fallbackError);
+        return res.status(429).json({ error: `Gemini image quota is unavailable. ${fallbackMessage}` });
+      }
+    }
+
+    const status = getQuotaStatus(error);
     const userError = status === 401 || status === 403
       ? 'Gemini rejected the API key. Check GEMINI_API_KEY in .env.'
       : status === 429
