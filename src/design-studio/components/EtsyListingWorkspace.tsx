@@ -33,10 +33,20 @@ import {
 
 interface EtsyListingResponse {
   productTitle: string;
+  title?: string;
+  shortDescription?: string;
   productDescription: string;
+  description?: string;
   primaryKeywords: string[];
   longTailKeywords: string[];
   etsyTags: string[];
+  tags?: string[];
+  relevantSearchTerms?: string[];
+  suggestedAttributes?: any;
+  relevantCategories?: string[];
+  personalizationSuggestions?: string[];
+  seoRecommendations?: any;
+  extractedConcepts?: any;
   category: string;
   primaryColor: string;
   secondaryColor: string;
@@ -227,9 +237,10 @@ export const EtsyListingGenerator: React.FC<EtsyListingGeneratorProps> = ({ desi
         const draft = createListingDraft(selectedDesign, settings, nextDrafts[selectedDesign.id]);
         nextDrafts[selectedDesign.id] = {
           ...draft,
-          title: listing.productTitle,
-          description: listing.productDescription,
-          tags: Array.from({ length: 13 }, (_, tagIndex) => listing.etsyTags?.[tagIndex] || ''),
+          title: listing.productTitle || listing.title || draft.title,
+          shortDescription: listing.shortDescription || draft.shortDescription,
+          description: listing.productDescription || listing.description || draft.description,
+          tags: Array.from({ length: 13 }, (_, tagIndex) => (listing.etsyTags || listing.tags)?.[tagIndex] || ''),
           category: listing.category || draft.category,
           primaryColor: listing.primaryColor || draft.primaryColor,
           secondaryColor: listing.secondaryColor || draft.secondaryColor,
@@ -238,7 +249,13 @@ export const EtsyListingGenerator: React.FC<EtsyListingGeneratorProps> = ({ desi
           recipient: listing.targetCustomer?.join(', ') || draft.recipient,
           primaryKeywords: listing.primaryKeywords || [],
           longTailKeywords: listing.longTailKeywords || [],
+          relevantSearchTerms: listing.relevantSearchTerms || listing.searchIntent || [],
           searchIntent: listing.searchIntent || [],
+          suggestedAttributes: listing.suggestedAttributes,
+          relevantCategories: listing.relevantCategories || [],
+          personalizationSuggestions: listing.personalizationSuggestions || [],
+          seoRecommendations: listing.seoRecommendations,
+          extractedConcepts: listing.extractedConcepts,
           keywordRationale: listing.keywordRationale || '',
           status: 'DRAFT',
           error: '',
@@ -597,6 +614,50 @@ export const EtsyListingGenerator: React.FC<EtsyListingGeneratorProps> = ({ desi
             </button>
           </div>
 
+          {/* Design Prompt & Extracted Concepts Panel */}
+          <div className="rounded-xl border border-indigo-500/30 bg-slate-950 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" /> Design Prompt Source of Truth
+              </span>
+              <button
+                type="button"
+                onClick={generateListings}
+                disabled={isGenerating}
+                className="flex items-center gap-1 rounded bg-indigo-600 hover:bg-indigo-500 px-2.5 py-1 text-xs text-white cursor-pointer"
+              >
+                <RefreshCw className={`h-3 w-3 ${isGenerating ? 'animate-spin' : ''}`} />
+                <span>Re-analyze Prompt</span>
+              </button>
+            </div>
+            <p className="text-xs text-slate-300 font-mono bg-slate-900 p-2.5 rounded border border-slate-800 leading-relaxed">
+              {activeDesign.prompt || 'No prompt provided.'}
+            </p>
+
+            {activeDraft.extractedConcepts && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-850 text-xs">
+                <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block font-semibold uppercase">Subject</span>
+                  <span className="text-white font-medium truncate block">{activeDraft.extractedConcepts.subject}</span>
+                </div>
+                <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block font-semibold uppercase">Art Style</span>
+                  <span className="text-indigo-300 font-medium truncate block">{activeDraft.extractedConcepts.artStyle}</span>
+                </div>
+                <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block font-semibold uppercase">Colors</span>
+                  <span className="text-amber-300 font-medium truncate block">
+                    {activeDraft.extractedConcepts.colors?.primary}, {activeDraft.extractedConcepts.colors?.secondary}
+                  </span>
+                </div>
+                <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block font-semibold uppercase">Mood</span>
+                  <span className="text-emerald-300 font-medium truncate block">{activeDraft.extractedConcepts.mood}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-xs text-slate-300">Design name<input value={activeDraft.designName} onChange={(event) => updateActiveDraft({ designName: event.target.value })} className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
             <label className="text-xs text-slate-300">Product_ID<input value={activeDraft.productId} readOnly className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm text-slate-400" /></label>
@@ -606,6 +667,12 @@ export const EtsyListingGenerator: React.FC<EtsyListingGeneratorProps> = ({ desi
             <input value={activeDraft.title} maxLength={200} onChange={(event) => updateActiveDraft({ title: event.target.value })} className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" />
             <span className={`mt-1 block text-right ${activeDraft.title.length > 140 ? 'text-rose-300' : 'text-slate-500'}`}>{activeDraft.title.length} / 140</span>
           </label>
+
+          {activeDraft.shortDescription && (
+            <label className="block text-xs text-slate-300">Short description (hook / snippet)
+              <input value={activeDraft.shortDescription} onChange={(event) => updateActiveDraft({ shortDescription: event.target.value })} className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" />
+            </label>
+          )}
 
           <label className="block text-xs text-slate-300">Etsy description<textarea value={activeDraft.description} rows={10} onChange={(event) => updateActiveDraft({ description: event.target.value })} className="mt-1 w-full resize-y rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm leading-6 text-white" /></label>
 

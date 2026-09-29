@@ -78,7 +78,7 @@ export async function generateWithLocalImageApi(input: LocalImageRequest): Promi
     const uploadResponse = await fetch(`${baseUrl}/upload/image`, {
       method: 'POST',
       body: uploadForm,
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(800),
     });
     uploadedImage = await parseJsonResponse<{ name: string }>(uploadResponse, 'reference upload');
   } catch (error) {

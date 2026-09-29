@@ -42,6 +42,14 @@ Do not include: phone, phone case, mockup, device, realistic photography, 3D ren
   },
   isPreset: true,
   aspectRatio: '9:16',
+  keywords: [
+    'stained glass phone case',
+    'sleeping fox case',
+    'woodland wildlife cover',
+    'cathedral vitrail art',
+    'autumn sunburst case',
+    'art nouveau phone cover',
+  ],
 };
 
 export default function App() {

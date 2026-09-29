@@ -13,7 +13,7 @@ import {
   Link2,
   UploadCloud,
 } from 'lucide-react';
-import { ProductWorkflowStep } from '../types/unifiedWorkflow';
+import { ProductWorkflowStep, WorkflowMode } from '../types/unifiedWorkflow';
 
 interface WorkflowNavProps {
   currentStep: ProductWorkflowStep;
@@ -28,6 +28,8 @@ interface WorkflowNavProps {
   googleEmail?: string;
   onConnectGoogle?: () => void;
   printifyCreated: boolean;
+  currentWorkflowMode?: WorkflowMode;
+  onSelectWorkflowMode?: (mode: WorkflowMode) => void;
 }
 
 const STEPS: {
@@ -87,6 +89,8 @@ export const WorkflowNav: React.FC<WorkflowNavProps> = ({
   googleEmail,
   onConnectGoogle,
   printifyCreated,
+  currentWorkflowMode,
+  onSelectWorkflowMode,
 }) => {
   const isStepDone = (stepId: ProductWorkflowStep): boolean => {
     switch (stepId) {
@@ -128,6 +132,46 @@ export const WorkflowNav: React.FC<WorkflowNavProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Workflow Mode Selector Pills */}
+        {onSelectWorkflowMode && currentWorkflowMode && (
+          <div className="flex items-center gap-1 rounded-xl bg-slate-900 p-1 border border-slate-800 text-xs">
+            <span className="text-[10px] text-slate-400 font-semibold px-2 uppercase">Workflow:</span>
+            <button
+              type="button"
+              onClick={() => onSelectWorkflowMode('workflow-a')}
+              className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
+                currentWorkflowMode === 'workflow-a'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Workflow A (AI)
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectWorkflowMode('workflow-b')}
+              className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
+                currentWorkflowMode === 'workflow-b'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Workflow B (Upload + AI)
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectWorkflowMode('workflow-c')}
+              className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
+                currentWorkflowMode === 'workflow-c'
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Workflow C (Custom Mockups)
+            </button>
+          </div>
+        )}
 
         {/* Central Product ID Badge */}
         <div className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1 text-xs">

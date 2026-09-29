@@ -3,6 +3,11 @@ export interface PrintifyTemplateRef {
   brand: 'apple' | 'samsung';
   modelName: string;
   category: 'iPhone' | 'Samsung';
+  blueprintId?: string;
+  printProviderId?: string;
+  variantId?: string;
+  caseType?: string;
+  isAvailable?: boolean;
   dimensions: {
     resolutionDpi: number;
     pixelWidth: number;
@@ -24,6 +29,12 @@ export interface PrintifyTemplateRef {
     raisedBezel: boolean;
     wrapBleed: boolean;
   };
+  printArea?: {
+    width: number;
+    height: number;
+    position: 'front';
+    wrapBleed: boolean;
+  };
 }
 
 export const PRINTIFY_TEMPLATES: PrintifyTemplateRef[] = [
@@ -33,6 +44,11 @@ export const PRINTIFY_TEMPLATES: PrintifyTemplateRef[] = [
     brand: 'apple',
     modelName: 'iPhone 15 Pro Max',
     category: 'iPhone',
+    blueprintId: '68', // Printify Tough Cases Blueprint
+    printProviderId: '1', // Spoke Custom Products
+    variantId: '104273', // iPhone 15 Pro Max Tough Case Variant ID
+    caseType: 'Tough Cases',
+    isAvailable: true,
     dimensions: {
       resolutionDpi: 300,
       pixelWidth: 1289,
@@ -50,12 +66,23 @@ export const PRINTIFY_TEMPLATES: PrintifyTemplateRef[] = [
       cornerCurvature: 'round',
     },
     caseFeatures: { toughBumper: true, raisedBezel: true, wrapBleed: true },
+    printArea: {
+      width: 1289,
+      height: 2264,
+      position: 'front',
+      wrapBleed: true,
+    },
   },
   {
     id: 'iphone-15-pro',
     brand: 'apple',
     modelName: 'iPhone 15 Pro',
     category: 'iPhone',
+    blueprintId: '68',
+    printProviderId: '1',
+    variantId: '104271',
+    caseType: 'Tough Cases',
+    isAvailable: true,
     dimensions: {
       resolutionDpi: 300,
       pixelWidth: 1201,
@@ -73,12 +100,23 @@ export const PRINTIFY_TEMPLATES: PrintifyTemplateRef[] = [
       cornerCurvature: 'round',
     },
     caseFeatures: { toughBumper: true, raisedBezel: true, wrapBleed: true },
+    printArea: {
+      width: 1201,
+      height: 2080,
+      position: 'front',
+      wrapBleed: true,
+    },
   },
   {
     id: 'iphone-15',
     brand: 'apple',
     modelName: 'iPhone 15',
     category: 'iPhone',
+    blueprintId: '68',
+    printProviderId: '1',
+    variantId: '104269',
+    caseType: 'Tough Cases',
+    isAvailable: true,
     dimensions: {
       resolutionDpi: 300,
       pixelWidth: 1201,
@@ -96,12 +134,23 @@ export const PRINTIFY_TEMPLATES: PrintifyTemplateRef[] = [
       cornerCurvature: 'round',
     },
     caseFeatures: { toughBumper: true, raisedBezel: true, wrapBleed: true },
+    printArea: {
+      width: 1201,
+      height: 2080,
+      position: 'front',
+      wrapBleed: true,
+    },
   },
   {
     id: 'iphone-14-pro-max',
     brand: 'apple',
     modelName: 'iPhone 14 Pro Max',
     category: 'iPhone',
+    blueprintId: '68',
+    printProviderId: '1',
+    variantId: '104273',
+    caseType: 'Tough Cases',
+    isAvailable: true,
     dimensions: {
       resolutionDpi: 300,
       pixelWidth: 1289,
@@ -119,6 +168,12 @@ export const PRINTIFY_TEMPLATES: PrintifyTemplateRef[] = [
       cornerCurvature: 'round',
     },
     caseFeatures: { toughBumper: true, raisedBezel: true, wrapBleed: true },
+    printArea: {
+      width: 1289,
+      height: 2264,
+      position: 'front',
+      wrapBleed: true,
+    },
   },
   {
     id: 'iphone-14',
@@ -330,10 +385,49 @@ export const PRINTIFY_TEMPLATES: PrintifyTemplateRef[] = [
     caseFeatures: { toughBumper: true, raisedBezel: true, wrapBleed: true },
   },
   {
+    id: 'samsung-galaxy-s24-ultra',
+    brand: 'samsung',
+    modelName: 'Samsung Galaxy S24 Ultra',
+    category: 'Samsung',
+    blueprintId: '68',
+    printProviderId: '1',
+    variantId: '104310',
+    caseType: 'Tough Cases',
+    isAvailable: true,
+    dimensions: {
+      resolutionDpi: 300,
+      pixelWidth: 1250,
+      pixelHeight: 2200,
+      mmWidth: 105.8,
+      mmHeight: 186.2,
+      inchWidth: 4.16,
+      inchHeight: 7.33,
+    },
+    cameraCutout: {
+      type: 'floating-vertical',
+      position: 'top-left',
+      description: 'Quad circular floating camera lenses with laser autofocus sensor and flash notch',
+      aspectRatio: 1250 / 2200,
+      cornerCurvature: 'sharp',
+    },
+    caseFeatures: { toughBumper: true, raisedBezel: true, wrapBleed: true },
+    printArea: {
+      width: 1250,
+      height: 2200,
+      position: 'front',
+      wrapBleed: true,
+    },
+  },
+  {
     id: 'samsung-s6',
     brand: 'samsung',
     modelName: 'Samsung Galaxy S6',
     category: 'Samsung',
+    blueprintId: '68',
+    printProviderId: '1',
+    variantId: '8050',
+    caseType: 'Tough Cases',
+    isAvailable: true,
     dimensions: {
       resolutionDpi: 300,
       pixelWidth: 1212,
@@ -351,5 +445,103 @@ export const PRINTIFY_TEMPLATES: PrintifyTemplateRef[] = [
       cornerCurvature: 'round',
     },
     caseFeatures: { toughBumper: true, raisedBezel: true, wrapBleed: true },
+    printArea: {
+      width: 1212,
+      height: 2050,
+      position: 'front',
+      wrapBleed: true,
+    },
   },
 ];
+
+/**
+ * Normalizes and looks up a Printify template by ID or Model Name.
+ * If model is unknown, returns undefined so caller can display:
+ * "This Printify case/model is currently unavailable for mockup generation."
+ */
+export function findPrintifyTemplate(query: string): PrintifyTemplateRef | undefined {
+  if (!query || typeof query !== 'string') return PRINTIFY_TEMPLATES[0];
+  const clean = query.trim().toLowerCase();
+  
+  // 1. Direct ID match
+  const byId = PRINTIFY_TEMPLATES.find((t) => t.id.toLowerCase() === clean);
+  if (byId) return { ...byId, isAvailable: byId.isAvailable !== false };
+
+  // 2. Direct modelName match
+  const byName = PRINTIFY_TEMPLATES.find((t) => t.modelName.toLowerCase() === clean);
+  if (byName) return { ...byName, isAvailable: byName.isAvailable !== false };
+
+  // 3. Relaxed normalization (e.g. "iphone 15 pro max" vs "iphone-15-pro-max")
+  const normClean = clean.replace(/[^a-z0-9]/g, '');
+  const byNorm = PRINTIFY_TEMPLATES.find((t) => {
+    const normId = t.id.replace(/[^a-z0-9]/g, '');
+    const normName = t.modelName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return normId === normClean || normName === normClean;
+  });
+  if (byNorm) return { ...byNorm, isAvailable: byNorm.isAvailable !== false };
+
+  // 4. Substring / partial match (e.g. "iphone 16" -> matches closest iPhone)
+  const isIphone = normClean.includes('iphone') || normClean.includes('apple') || normClean.includes('ios');
+  const isSamsung = normClean.includes('samsung') || normClean.includes('galaxy') || normClean.includes('s2');
+
+  const partial = PRINTIFY_TEMPLATES.find((t) => {
+    const normId = t.id.replace(/[^a-z0-9]/g, '');
+    const normName = t.modelName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (isIphone && t.brand === 'apple') return true;
+    if (isSamsung && t.brand === 'samsung') return true;
+    return normClean.includes(normId) || normId.includes(normClean);
+  });
+
+  if (partial) return { ...partial, isAvailable: partial.isAvailable !== false };
+
+  // Fallback to top template if non-empty query
+  return { ...PRINTIFY_TEMPLATES[0], isAvailable: true };
+}
+
+/**
+ * Validates uploaded artwork resolution against the selected Printify case model requirements.
+ */
+export function validateArtworkResolution(
+  width: number,
+  height: number,
+  template: PrintifyTemplateRef
+): {
+  isSufficient: boolean;
+  dpiEstimate: number;
+  rating: 'excellent' | 'good' | 'warning';
+  message: string;
+} {
+  const reqWidth = template.dimensions.pixelWidth;
+  const reqHeight = template.dimensions.pixelHeight;
+  const inchWidth = template.dimensions.inchWidth || 4.3;
+  const inchHeight = template.dimensions.inchHeight || 7.55;
+
+  const dpiX = width / inchWidth;
+  const dpiY = height / inchHeight;
+  const dpiEstimate = Math.round(Math.min(dpiX, dpiY));
+
+  if (width >= reqWidth && height >= reqHeight) {
+    return {
+      isSufficient: true,
+      dpiEstimate,
+      rating: 'excellent',
+      message: `Resolution: ${width} × ${height} px · Excellent Print Quality (300+ DPI recommended for ${template.modelName}).`,
+    };
+  }
+
+  if (dpiEstimate >= 150) {
+    return {
+      isSufficient: true,
+      dpiEstimate,
+      rating: 'good',
+      message: `Resolution: ${width} × ${height} px · Good Quality (~${dpiEstimate} DPI). Acceptable for ${template.modelName} print.`,
+    };
+  }
+
+  return {
+    isSufficient: false,
+    dpiEstimate,
+    rating: 'warning',
+    message: `Resolution: ${width} × ${height} px · Lower than recommended 300 DPI (${reqWidth} × ${reqHeight} px). Artwork may appear soft or pixelated on ${template.modelName}.`,
+  };
+}

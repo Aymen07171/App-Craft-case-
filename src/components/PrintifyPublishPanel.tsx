@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle, ExternalLink, Image as ImageIcon, LoaderCircle, RefreshCw,
-  UploadCloud, CircleDollarSign, Calculator, Info,
+  UploadCloud, CircleDollarSign, Calculator, Info, ShieldCheck, Download,
 } from 'lucide-react';
 import { GeneratedDesign } from '../design-studio/types';
 import { UnifiedProductRecord } from '../types/unifiedWorkflow';
@@ -20,9 +20,21 @@ interface Props {
   onUpdateProduct: (product: UnifiedProductRecord) => void;
 }
 
+function getPrintifyToken(): string {
+  return (
+    localStorage.getItem('casecraft_printify_token') ||
+    localStorage.getItem('PRINTIFY_API_TOKEN') ||
+    ''
+  );
+}
+
 async function getPrintify(resource: string, params: Record<string, string> = {}) {
   const query = new URLSearchParams({ resource, ...params });
-  const response = await fetch(`/api/printify?${query}`);
+  const token = getPrintifyToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['x-printify-token'] = token;
+
+  const response = await fetch(`/api/printify?${query}`, { headers });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `Printify request failed (${response.status}).`);
   return data;
@@ -42,8 +54,13 @@ async function imageAsDataUrl(source: string) {
 }
 
 async function uploadPrintifyAsset(fileName: string, image: string) {
+  const token = getPrintifyToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['x-printify-token'] = token;
+
   const response = await fetch('/api/printify', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+    headers,
     body: JSON.stringify({ action: 'upload', fileName, image }),
   });
   const data = await response.json().catch(() => ({}));
@@ -75,6 +92,9 @@ const statusStyle: Record<string, string> = {
 export const PrintifyPublishPanel: React.FC<Props> = ({ product, designs, onUpdateProduct }) => {
   const [shops, setShops] = useState<Shop[]>([]);
   const [selectedShopId, setSelectedShopId] = useState(String(product.printify.shopId || ''));
+  const [userToken, setUserToken] = useState(() => getPrintifyToken());
+  const [showTokenInput, setShowTokenInput] = useState(() => !getPrintifyToken());
+  const [tokenSaveNotice, setTokenSaveNotice] = useState('');
   const [blueprints, setBlueprints] = useState<CatalogItem[]>([]);
   const [providers, setProviders] = useState<CatalogItem[]>([]);
   const [variants, setVariants] = useState<CatalogItem[]>([]);
@@ -156,6 +176,21 @@ export const PrintifyPublishPanel: React.FC<Props> = ({ product, designs, onUpda
     } else {
       changePricing({ [key]: amount } as Partial<ProductPricing>);
     }
+  };
+
+  const handleSaveUserToken = () => {
+    const trimmed = userToken.trim();
+    if (trimmed) {
+      localStorage.setItem('casecraft_printify_token', trimmed);
+      localStorage.setItem('PRINTIFY_API_TOKEN', trimmed);
+      setTokenSaveNotice('Printify API Token saved! Reconnecting...');
+    } else {
+      localStorage.removeItem('casecraft_printify_token');
+      localStorage.removeItem('PRINTIFY_API_TOKEN');
+      setTokenSaveNotice('Token cleared. Switched to Local Sandbox Mode.');
+    }
+    setTimeout(() => setTokenSaveNotice(''), 3000);
+    void loadConnection();
   };
 
   const loadConnection = async () => {
@@ -354,8 +389,13 @@ export const PrintifyPublishPanel: React.FC<Props> = ({ product, designs, onUpda
         pricing,
         printify: { ...product.printify, shopId: selectedShopId, selectedMockupSlots },
       };
+      const token = getPrintifyToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['x-printify-token'] = token;
+
       const response = await fetch('/api/printify', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers,
         body: JSON.stringify({
           action: 'create', shopId: selectedShopId,
           product: { productId: productPayload.productId, listing: productPayload.listing, product: productPayload.product, pricing, printify: productPayload.printify },
@@ -399,8 +439,13 @@ export const PrintifyPublishPanel: React.FC<Props> = ({ product, designs, onUpda
       if (!artworkSource) throw new Error('This product has no design artwork to upload.');
       const artwork = product.design.fileUrl || await imageAsDataUrl(artworkSource);
       const artworkImageId = await uploadPrintifyAsset(`${product.productId}-artwork.png`, artwork);
+      const token = getPrintifyToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['x-printify-token'] = token;
+
       const response = await fetch('/api/printify', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers,
         body: JSON.stringify({ action: 'publish-product', shopId: selectedShopId, productId: savedProductId, price: pricing.sellingPrice, artworkImageId, product: { listing: product.listing } }),
       });
       const data = await response.json().catch(() => ({}));
@@ -471,7 +516,57 @@ export const PrintifyPublishPanel: React.FC<Props> = ({ product, designs, onUpda
           </div>
         </div>
 
-        {!connected && !configured && <p className="text-xs text-slate-400">Set <code className="text-indigo-300">PRINTIFY_API_TOKEN</code> as a server environment variable, then check the connection.</p>}
+        {/* Token Management Card */}
+        <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-4 text-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-white flex items-center gap-1.5">
+              <ShieldCheck className="h-4 w-4 text-indigo-400" />
+              Printify API Personal Access Token
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowTokenInput((prev) => !prev)}
+              className="text-indigo-300 hover:text-indigo-200 font-medium underline"
+            >
+              {showTokenInput ? 'Hide' : getPrintifyToken() ? 'Change Token' : 'Enter Token'}
+            </button>
+          </div>
+
+          {(showTokenInput || !getPrintifyToken()) && (
+            <div className="space-y-2 pt-1 border-t border-indigo-900/40">
+              <p className="text-slate-300 leading-relaxed">
+                Enter your Printify API Token below to connect your store and publish products directly.
+                (Get your token at{' '}
+                <a
+                  href="https://printify.com/app/account/api"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-indigo-300 underline font-medium"
+                >
+                  Printify &gt; Account &gt; API
+                </a>
+                )
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="password"
+                  value={userToken}
+                  onChange={(e) => setUserToken(e.target.value)}
+                  placeholder="Paste your Printify Personal Access Token here..."
+                  className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-indigo-400 focus:outline-none font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveUserToken}
+                  className="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-xs font-semibold text-white transition cursor-pointer shrink-0"
+                >
+                  Save & Connect
+                </button>
+              </div>
+              {tokenSaveNotice && <p className="text-emerald-400 font-medium mt-1">{tokenSaveNotice}</p>}
+            </div>
+          )}
+        </div>
         {connected && <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className={labelClass}>Printify shop
@@ -513,11 +608,24 @@ export const PrintifyPublishPanel: React.FC<Props> = ({ product, designs, onUpda
             {product.mockups.length ? <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {product.mockups.map((mockup) => {
                 const available = Boolean(mockup.fileUrl || mockup.localUrl);
-                return <label key={mockup.slotIndex} className={`flex items-center gap-2 rounded-lg border p-2 ${selectedMockupSlots.includes(mockup.slotIndex) ? 'border-indigo-400/60 bg-indigo-400/5' : 'border-slate-800'} ${!available || savedProductId ? 'opacity-50' : 'cursor-pointer'}`}>
-                  <input type="checkbox" checked={selectedMockupSlots.includes(mockup.slotIndex)} disabled={!available || Boolean(savedProductId) || publishing} onChange={() => toggleMockup(mockup.slotIndex)} className="accent-indigo-400" />
-                  {available ? <img src={mockup.localUrl || mockup.fileUrl} alt={mockup.sceneTitle || mockup.modelName} className="h-12 w-12 rounded object-cover" /> : <span className="flex h-12 w-12 items-center justify-center rounded bg-slate-950 text-slate-600"><ImageIcon className="h-4 w-4" /></span>}
-                  <span className="min-w-0"><span className="block truncate text-[11px] text-slate-200">{mockup.sceneTitle || mockup.modelName || `Mockup ${mockup.slotIndex + 1}`}</span><span className="block text-[10px] text-slate-500">{savedProductId && selectedMockupSlots.includes(mockup.slotIndex) ? 'Uploaded to Media Library' : available ? 'Ready to upload' : 'No generated image'}</span></span>
-                </label>;
+                return <div key={mockup.slotIndex} className={`flex flex-col gap-2 rounded-lg border p-2.5 bg-slate-950/40 ${selectedMockupSlots.includes(mockup.slotIndex) ? 'border-indigo-400/60 bg-indigo-400/5' : 'border-slate-800'}`}>
+                  <label className={`flex items-center gap-2 ${!available || savedProductId ? 'opacity-50' : 'cursor-pointer'}`}>
+                    <input type="checkbox" checked={selectedMockupSlots.includes(mockup.slotIndex)} disabled={!available || Boolean(savedProductId) || publishing} onChange={() => toggleMockup(mockup.slotIndex)} className="accent-indigo-400" />
+                    {available ? <img src={mockup.localUrl || mockup.fileUrl} alt={mockup.sceneTitle || mockup.modelName} className="h-12 w-12 rounded object-cover" /> : <span className="flex h-12 w-12 items-center justify-center rounded bg-slate-950 text-slate-600"><ImageIcon className="h-4 w-4" /></span>}
+                    <span className="min-w-0 flex-1"><span className="block truncate text-[11px] text-slate-200">{mockup.sceneTitle || mockup.modelName || `Mockup ${mockup.slotIndex + 1}`}</span><span className="block text-[10px] text-slate-500">{savedProductId && selectedMockupSlots.includes(mockup.slotIndex) ? 'Uploaded' : available ? 'Ready to upload' : 'No image'}</span></span>
+                  </label>
+                  {available && (
+                    <a
+                      href={mockup.localUrl || mockup.fileUrl}
+                      download={`casecraft-mockup-${mockup.slotIndex + 1}.png`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 flex items-center justify-center gap-1.5 rounded bg-slate-800 hover:bg-slate-700 py-1 px-2 text-[10px] font-semibold text-slate-200 transition"
+                    >
+                      <Download className="h-3 w-3 text-indigo-400" /> Download Mockup
+                    </a>
+                  )}
+                </div>;
               })}
             </div> : <p className="rounded-lg border border-dashed border-slate-800 p-3 text-xs text-slate-500">Generated mockups will appear here after the existing mockup workflow.</p>}
             <div role="note" className="mt-3 rounded-lg border border-amber-800/60 bg-amber-950/25 p-3 text-[11px] leading-5 text-amber-100">

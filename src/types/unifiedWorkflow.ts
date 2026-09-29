@@ -11,6 +11,8 @@ export type ProductWorkflowStep =
   | 'export'
   | 'printify';
 
+export type WorkflowMode = 'workflow-a' | 'workflow-b' | 'workflow-c';
+
 export type ProductStatus = 'DRAFT' | 'READY' | 'PROCESSING' | 'PUBLISHED' | 'ERROR';
 
 export interface DriveAssetRef {
@@ -27,6 +29,7 @@ export interface DriveAssetRef {
 export interface UnifiedProductRecord {
   productId: string; // e.g. CASE-00001
   designName: string;
+  workflowMode?: WorkflowMode;
   
   // Design Asset
   design: {
@@ -41,6 +44,21 @@ export interface UnifiedProductRecord {
     fileUrl: string;
     webContentLink?: string;
     verified?: boolean;
+    sourceType?: 'ai-generated' | 'user-upload';
+    resolution?: {
+      width: number;
+      height: number;
+      dpiEstimate?: number;
+      isSufficient?: boolean;
+      rating?: 'excellent' | 'good' | 'warning';
+      message?: string;
+    };
+    transform?: {
+      scale: number;
+      offsetX: number;
+      offsetY: number;
+      fitMode: 'cover' | 'contain' | 'stretch';
+    };
   };
 
   // Mockups (up to 6 slots)
@@ -57,11 +75,16 @@ export interface UnifiedProductRecord {
     verified?: boolean;
     status: 'pending' | 'generating' | 'generated' | 'failed' | 'uploaded';
     error?: string;
+    isPrimary?: boolean;
+    sourceType?: 'generated' | 'user-upload';
+    originalFileName?: string;
+    resolution?: { width: number; height: number };
   }[];
 
   // Etsy Listing
   listing: {
     title: string;
+    shortDescription?: string;
     description: string;
     tags: string[]; // exactly 13 tags
     category: string;
@@ -72,7 +95,45 @@ export interface UnifiedProductRecord {
     recipient: string;
     primaryKeywords?: string[];
     longTailKeywords?: string[];
+    relevantSearchTerms?: string[];
     searchIntent?: string[];
+    suggestedAttributes?: {
+      category?: string;
+      categoryPath?: string[];
+      primaryColor?: string;
+      secondaryColor?: string;
+      artStyle?: string;
+      theme?: string;
+      subject?: string;
+      recipient?: string;
+      occasion?: string;
+      finish?: string;
+      material?: string;
+      compatibleDevices?: string[];
+    };
+    relevantCategories?: string[];
+    personalizationSuggestions?: string[];
+    seoRecommendations?: {
+      primarySearchQuery?: string;
+      longTailStrategy?: string;
+      searchIntentSummary?: string;
+      conversionAdvice?: string;
+      keywordRationale?: string;
+    };
+    extractedConcepts?: {
+      subject?: string;
+      artStyle?: string;
+      theme?: string;
+      colors?: {
+        primary?: string;
+        secondary?: string;
+        palette?: string[];
+      };
+      mood?: string;
+      elements?: string[];
+      targetAudience?: string[];
+      giftOccasions?: string[];
+    };
     keywordRationale?: string;
   };
 
@@ -98,6 +159,15 @@ export interface UnifiedProductRecord {
     productStatusCheckedAt?: string;
     lastError?: string;
     lastAttemptAt?: string;
+    creationResponse?: {
+      success: boolean;
+      productId?: string;
+      productUrl?: string;
+      variantsCount?: number;
+      createdAt?: string;
+      message?: string;
+      error?: string;
+    };
   };
 
   // Product-specific pricing inputs, stored with this product record.

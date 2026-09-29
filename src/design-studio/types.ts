@@ -35,4 +35,6 @@ export interface GeneratedDesign {
   aspectRatio?: AspectRatio;
   width?: number;
   height?: number;
+  keywords?: string[];
+  provider?: string;
 }

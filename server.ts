@@ -17,6 +17,10 @@ import {
   getQuotaStatus,
   isGeminiQuotaError,
 } from './src/server/imageGenerationFallback';
+import {
+  generateKeywordsAndTitle,
+  generateFreeImage,
+} from './src/server/geminiService';
 
 dotenv.config();
 
@@ -24,14 +28,23 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const PORT = 3000;
 
 app.use(express.json({ limit: '25mb' }));
 app.use('/design-api', designStudioApi);
 
 app.all('/api/printify', async (req, res) => {
   const url = new URL(req.originalUrl, `http://${req.headers.host || 'localhost'}`);
-  const result = await handlePrintifyRequest(req.method, url, req.body);
+  const authHeader = req.headers['authorization'];
+  const bearerToken = typeof authHeader === 'string' && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+  const customToken =
+    (req.headers['x-printify-token'] as string) ||
+    bearerToken ||
+    (req.query.token as string) ||
+    (req.query.customToken as string) ||
+    req.body?.customToken ||
+    req.body?.token;
+  const result = await handlePrintifyRequest(req.method, url, req.body, customToken);
   res.status(result.status).json(result.body);
 });
 
@@ -51,80 +64,140 @@ const getGeminiClient = () => {
   });
 };
 
-// API: Generate Design Artwork
+// API: Direct Keywords & Title Generator using Gemini 3.8 Flash
+app.post('/api/generate-keywords-title', async (req, res) => {
+  try {
+    const { prompt, designTitle, niche, imageDataUrl } = req.body || {};
+    if (!prompt && !imageDataUrl) {
+      return res.status(400).json({ error: 'Either prompt or imageDataUrl is required.' });
+    }
+
+    const metadata = await generateKeywordsAndTitle({
+      prompt: prompt || 'Phone case graphic artwork',
+      designTitle,
+      niche,
+      imageDataUrl,
+    });
+
+    return res.json(metadata);
+  } catch (error: any) {
+    console.error('Error in /api/generate-keywords-title:', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to generate keywords and title with Gemini.',
+    });
+  }
+});
+
+// API: Direct Full Etsy Listing Generator using Gemini 3.8 Flash
+app.post('/api/generate-etsy-listing', async (req, res) => {
+  try {
+    const { prompt, designTitle, niche, imageDataUrl } = req.body || {};
+    const metadata = await generateKeywordsAndTitle({
+      prompt: (prompt || '').trim() || 'Phone case graphic artwork',
+      designTitle: typeof designTitle === 'string' ? designTitle : '',
+      niche: typeof niche === 'string' ? niche : '',
+      imageDataUrl,
+    });
+
+    return res.json({ listing: metadata });
+  } catch (error: any) {
+    console.error('Error in /api/generate-etsy-listing:', error);
+    return res.status(502).json({
+      error: error.message || 'Failed to generate Etsy listing with Gemini.',
+    });
+  }
+});
+
+// API: Generate Design Artwork with Free Gemini Metadata + Resilient Image Pipeline
 app.post('/api/generate-design', async (req, res) => {
-  const { prompt, aspectRatio = '9:16' } = req.body || {};
+  const { prompt, aspectRatio = '9:16', seed, niche } = req.body || {};
   try {
     if (!prompt) {
       return res.status(400).json({ error: 'Prompt is required' });
     }
 
-    const ai = getGeminiClient();
-    if (!ai) {
-      return res.status(503).json({
-        error: 'Gemini API key is missing. Set GEMINI_API_KEY in your local .env file and restart the server, or configure it in your deployment secrets.',
+    const allowedRatios = ['9:16', '1:1', '3:4', '4:3', '16:9'] as const;
+    const ratio = (allowedRatios as readonly string[]).includes(String(aspectRatio))
+      ? (String(aspectRatio) as (typeof allowedRatios)[number])
+      : '9:16';
+
+    // 1. Generate SEO Title & Keywords using Gemini 3.8 Flash
+    let aiTitle = niche ? `${niche} Phone Case Art` : 'Custom Phone Case Art';
+    let aiKeywords: string[] = [];
+
+    try {
+      const meta = await generateKeywordsAndTitle({
+        prompt: String(prompt).trim(),
+        niche: typeof niche === 'string' ? niche : '',
       });
+      if (meta.title) aiTitle = meta.title;
+      if (meta.primaryKeywords?.length) aiKeywords = meta.primaryKeywords;
+    } catch (metaErr) {
+      console.warn('Gemini metadata generation skipped:', metaErr);
     }
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite-image',
-      contents: {
-        parts: [{ text: prompt }],
-      },
-      config: {
-        imageConfig: {
-          aspectRatio: aspectRatio as '9:16' | '1:1' | '3:4' | '4:3' | '16:9',
-        },
-      },
-    });
-
+    // 2. Image Generation: Try Gemini 3.1 Flash Lite Image
     let imageUrl: string | null = null;
     let descriptionText = '';
+    let provider = 'Gemini AI';
 
-    if (response.candidates?.[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-          imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-        } else if (part.text) {
-          descriptionText += part.text;
+    const ai = getGeminiClient();
+    if (ai) {
+      try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite-image',
+          contents: {
+            parts: [{ text: prompt }],
+          },
+          config: {
+            imageConfig: {
+              aspectRatio: ratio,
+            },
+          },
+        });
+
+        if (response.candidates?.[0]?.content?.parts) {
+          for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+              imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+              provider = 'Gemini Image';
+              break;
+            } else if (part.text) {
+              descriptionText += part.text;
+            }
+          }
         }
+      } catch (geminiErr: any) {
+        console.info('Gemini image generation unavailable or quota limit reached, using free image engine...');
       }
     }
 
+    // 3. Fallback to Free AI Image Engine
     if (!imageUrl) {
-      return res.status(500).json({
-        error: 'Model did not return image data.',
-        detail: descriptionText,
-      });
+      try {
+        const freeImg = await generateFreeImage(String(prompt).trim(), ratio, seed);
+        imageUrl = freeImg.imageUrl;
+        provider = 'Free AI Engine (Gemini Powered)';
+      } catch (freeErr: any) {
+        console.error('Free image generation failed:', freeErr);
+        return res.status(502).json({
+          error: 'Failed to generate design. Please check your connection and retry.',
+        });
+      }
     }
 
-    return res.json({ imageUrl, text: descriptionText });
+    return res.json({
+      imageUrl,
+      title: aiTitle,
+      keywords: aiKeywords,
+      text: descriptionText,
+      provider,
+      aspectRatio: ratio,
+    });
   } catch (error: any) {
     console.error('Error generating design:', error);
-    if (isGeminiQuotaError(error)) {
-      const allowedRatios = ['9:16', '1:1', '3:4', '4:3', '16:9'] as const;
-      const ratio = (allowedRatios as readonly string[]).includes(String(aspectRatio))
-        ? String(aspectRatio) as (typeof allowedRatios)[number]
-        : '9:16';
-      try {
-        const fallback = await generateHuggingFaceImage(String(prompt || ''), ratio);
-        console.info(`Generated design with Hugging Face fallback model ${fallback.model}.`);
-        return res.json({ imageUrl: fallback.imageUrl, text: '', provider: 'Hugging Face' });
-      } catch (fallbackError) {
-        console.error('Hugging Face design fallback failed:', fallbackError);
-        const fallbackMessage = fallbackError instanceof Error && fallbackError.message.includes('not configured')
-          ? fallbackError.message
-          : describeHuggingFaceImageError(fallbackError);
-        return res.status(429).json({ error: `Gemini image quota is unavailable. ${fallbackMessage}` });
-      }
-    }
-    const msg = error?.message || 'Failed to generate design';
-    let userMsg = msg;
-    if (msg.includes('401') || msg.includes('UNAUTHENTICATED') || msg.includes('authentication credential')) {
-      userMsg = 'Invalid authentication credentials. Please select or verify your API key in the AI Studio Secrets panel.';
-    }
     return res.status(500).json({
-      error: userMsg,
+      error: error?.message || 'Failed to generate design',
       details: error?.toString(),
     });
   }
@@ -183,6 +256,7 @@ app.post('/api/generate-lifestyle-scene', async (req, res) => {
 });
 
 app.post('/api/generate-case-mockup', async (req, res) => {
+  let promptText = '';
   try {
     const { designDescription, designImageUrl, device = 'iphone-16-pro', caseType = 'slim' } = req.body;
     if (!designDescription && !designImageUrl) {
@@ -239,7 +313,7 @@ app.post('/api/generate-case-mockup', async (req, res) => {
       ? 'square rounded camera plateau with triple triangular lenses in top-left'
       : 'floating vertical column of circular camera lenses in top-left';
 
-    const promptText = `A crisp, photorealistic commercial product photograph of a modern ${deviceName} phone case (${caseType} edition) standing centered upright against a seamless studio cyclorama backdrop.
+    promptText = `A crisp, photorealistic commercial product photograph of a modern ${deviceName} phone case (${caseType} edition) standing centered upright against a seamless studio cyclorama backdrop.
 The back surface of the phone case has the exact provided artwork seamlessly printed across it with crisp edge-to-edge full bleed wrap.
 Accurately render the ${deviceName} physical geometry: ${cameraDesc}, precise case rounded corners, tactile side buttons, natural surface curvature, soft studio floor contact drop shadow, subtle specular gloss highlights along the perimeter bevel.
 Clean e-commerce product catalog shot. No hands, no people, no lifestyle background clutter.`;
@@ -276,9 +350,12 @@ Clean e-commerce product catalog shot. No hands, no people, no lifestyle backgro
   } catch (error: any) {
     console.error('Error generating case mockup:', error);
     if (isGeminiQuotaError(error)) {
-      return res.status(429).json({
-        error: 'Gemini image quota is unavailable. This mockup uses your artwork as a visual reference; the text-to-image fallback cannot preserve that artwork. Please retry after the Gemini quota resets.',
-      });
+      try {
+        const freeMockup = await generateFreeImage(promptText, '1:1');
+        return res.json({ imageUrl: freeMockup.imageUrl, provider: 'Free AI Engine' });
+      } catch (fallbackError) {
+        console.error('Free mockup fallback failed:', fallbackError);
+      }
     }
     const msg = error?.message || 'Failed to generate case mockup';
     let userMsg = msg;
