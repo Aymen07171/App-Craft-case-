@@ -9,6 +9,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { UnifiedProductRecord } from '../types/unifiedWorkflow';
+import { PinterestCsvRow } from '../types/pinterest';
 
 const getFirebaseAuth = () => {
   const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -59,6 +60,35 @@ export const GOOGLE_SCOPES = [
   'email',
   'profile',
   'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/spreadsheets',
+].join(' ');
+
+export const DEFAULT_GOOGLE_CLIENT_ID = '171360328307-aqp8b3ko9t1sirdgeu670g4etetsntrm.apps.googleusercontent.com';
+
+export const getStoredGoogleClientId = (): string => {
+  if (typeof window === 'undefined') return DEFAULT_GOOGLE_CLIENT_ID;
+  return localStorage.getItem('casecraft_google_client_id') || DEFAULT_GOOGLE_CLIENT_ID;
+};
+
+export const setStoredGoogleClientId = (id: string): void => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('casecraft_google_client_id', id);
+  }
+};
+
+export const GOOGLE_SCOPES_DEFAULT = [
+  'openid',
+  'email',
+  'profile',
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/spreadsheets',
+].join(' ');
+
+export const GOOGLE_SCOPES_RESTRICTED_FREE = [
+  'openid',
+  'email',
+  'profile',
+  'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/spreadsheets',
 ].join(' ');
 
@@ -694,3 +724,182 @@ function columnToLetter(column: number): string {
   }
   return letter;
 }
+
+export const extractSpreadsheetId = (url: string): string | null => {
+  if (!url) return null;
+  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return match ? match[1] : (url.trim().length > 10 ? url.trim() : null);
+};
+
+export const getSpreadsheetInfo = async (
+  token: string,
+  spreadsheetId: string
+): Promise<{ id: string; title: string; sheets: GoogleWorksheetRef[] }> => {
+  const data = await googleRequest<{
+    properties?: { title: string };
+    sheets?: { properties?: { sheetId: number; title: string; index: number } }[];
+  }>(
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}?fields=properties.title,sheets.properties(sheetId,title,index)`,
+    token
+  );
+  const sheets = (data.sheets || [])
+    .map((s) => s.properties)
+    .filter((p): p is { sheetId: number; title: string; index: number } => Boolean(p?.title))
+    .map((p) => ({ id: p.sheetId, title: p.title, index: p.index }));
+  return {
+    id: spreadsheetId,
+    title: data.properties?.title || 'Untitled Spreadsheet',
+    sheets,
+  };
+};
+
+export const createPinterestSpreadsheet = async (
+  token: string,
+  title: string
+): Promise<{ id: string; title: string; worksheetTitle: string; url: string }> => {
+  const res = await googleRequest<{ spreadsheetId: string; properties?: { title: string } }>(
+    'https://sheets.googleapis.com/v4/spreadsheets',
+    token,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        properties: { title },
+        sheets: [{ properties: { title: 'Pins' } }],
+      }),
+    }
+  );
+  const id = res.spreadsheetId;
+  const worksheetTitle = 'Pins';
+  // Write headers
+  const headers = ['Title', 'Media URL', 'Pinterest board', 'Thumbnail', 'Description', 'Link', 'Publish date', 'Keywords'];
+  const range = encodeURIComponent(`'Pins'!A1:H1`);
+  await googleRequest(
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}/values/${range}?valueInputOption=RAW`,
+    token,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ values: [headers] }),
+    }
+  );
+  return {
+    id,
+    title: res.properties?.title || title,
+    worksheetTitle,
+    url: `https://docs.google.com/spreadsheets/d/${id}/edit`,
+  };
+};
+
+export const exportPinterestPinsToSpreadsheet = async (
+  token: string,
+  spreadsheetId: string,
+  sheetName: string,
+  rows: PinterestCsvRow[],
+  mode: 'append' | 'overwrite'
+): Promise<{ count: number; spreadsheetUrl: string }> => {
+  // Ensure worksheet exists or headers are there
+  const headers = ['Title', 'Media URL', 'Pinterest board', 'Thumbnail', 'Description', 'Link', 'Publish date', 'Keywords'];
+  try {
+    // Try writing headers just in case
+    const headerRange = encodeURIComponent(`'${sheetName}'!A1:H1`);
+    await googleRequest(
+      `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${headerRange}?valueInputOption=RAW`,
+      token,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ values: [headers] }),
+      }
+    );
+  } catch (err) {
+    console.warn('Headers setup warning:', err);
+  }
+
+  const values = rows.map((r) => [
+    r.Title || '',
+    r['Media URL'] || '',
+    r['Pinterest board'] || '',
+    r.Thumbnail || '',
+    r.Description || '',
+    r.Link || '',
+    r['Publish date'] || '',
+    r.Keywords || '',
+  ]);
+
+  if (mode === 'overwrite') {
+    const clearRange = encodeURIComponent(`'${sheetName}'!A2:H1000`);
+    await googleRequest(
+      `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${clearRange}:clear`,
+      token,
+      { method: 'POST' }
+    );
+
+    const writeRange = encodeURIComponent(`'${sheetName}'!A2:H${values.length + 1}`);
+    await googleRequest(
+      `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${writeRange}?valueInputOption=RAW`,
+      token,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ values }),
+      }
+    );
+  } else {
+    const appendRange = encodeURIComponent(`'${sheetName}'!A:H`);
+    await googleRequest(
+      `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${appendRange}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      token,
+      {
+        method: 'POST',
+        body: JSON.stringify({ values }),
+      }
+    );
+  }
+
+  return {
+    count: rows.length,
+    spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+  };
+};
+
+export const readPinterestPinsFromSpreadsheet = async (
+  token: string,
+  spreadsheetId: string,
+  sheetName: string
+): Promise<PinterestCsvRow[]> => {
+  const range = encodeURIComponent(`'${sheetName}'!A1:H1000`);
+  const data = await googleRequest<{ values?: string[][] }>(
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${range}`,
+    token
+  );
+  const rows = data.values || [];
+  if (rows.length < 2) return [];
+
+  const rawHeaders = rows[0].map((h) => h.trim());
+  const normalizedHeaders = rawHeaders.map((h) => h.toLowerCase());
+
+  // Map indices
+  const titleIdx = normalizedHeaders.indexOf('title');
+  const mediaUrlIdx = normalizedHeaders.indexOf('media url');
+  const boardIdx = normalizedHeaders.indexOf('pinterest board');
+  const thumbIdx = normalizedHeaders.indexOf('thumbnail');
+  const descIdx = normalizedHeaders.indexOf('description');
+  const linkIdx = normalizedHeaders.indexOf('link');
+  const dateIdx = normalizedHeaders.indexOf('publish date');
+  const kwIdx = normalizedHeaders.indexOf('keywords');
+
+  const pins: PinterestCsvRow[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const vals = rows[i];
+    if (vals.length === 0 || vals.every((v) => !v)) continue;
+
+    pins.push({
+      Title: titleIdx !== -1 ? vals[titleIdx] || '' : '',
+      'Media URL': mediaUrlIdx !== -1 ? vals[mediaUrlIdx] || '' : '',
+      'Pinterest board': boardIdx !== -1 ? vals[boardIdx] || '' : '',
+      Thumbnail: thumbIdx !== -1 ? vals[thumbIdx] || '' : '',
+      Description: descIdx !== -1 ? vals[descIdx] || '' : '',
+      Link: linkIdx !== -1 ? vals[linkIdx] || '' : '',
+      'Publish date': dateIdx !== -1 ? vals[dateIdx] || '' : '',
+      Keywords: kwIdx !== -1 ? vals[kwIdx] || '' : '',
+    });
+  }
+  return pins;
+};

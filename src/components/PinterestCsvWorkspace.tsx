@@ -362,7 +362,7 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
       setWorksheets(info.sheets);
       if (info.sheets.length > 0) {
         const pinSheet = info.sheets.find(
-          (s) =>
+          (s: GoogleWorksheetRef) =>
             s.title.toLowerCase().includes('pin') ||
             s.title.toLowerCase().includes('pinterest')
         );

@@ -303,7 +303,7 @@ export const mapProductToPinterestPins = (
   // 2. Primary Lifestyle Mockup Pin
   if (options.includePrimaryMockup) {
     const primaryMockup =
-      product.mockups.find((m) => m.isPrimary && (m.fileUrl || m.localUrl)) ||
+      product.mockups.find((m) => m.slotIndex === 0 && (m.fileUrl || m.localUrl)) ||
       product.mockups.find((m) => m.fileUrl || m.localUrl);
 
     if (primaryMockup) {
@@ -337,7 +337,7 @@ export const mapProductToPinterestPins = (
   if (options.includeAllMockups) {
     product.mockups.forEach((mockup, idx) => {
       // skip primary if already added
-      if (options.includePrimaryMockup && (mockup.isPrimary || idx === 0)) return;
+      if (options.includePrimaryMockup && (mockup.slotIndex === 0 || idx === 0)) return;
 
       const mediaUrl =
         mockup.webContentLink ||
