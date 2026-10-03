@@ -12,6 +12,8 @@ import {
   Sparkles,
   Link2,
   UploadCloud,
+  Key,
+  Share2,
 } from 'lucide-react';
 import { ProductWorkflowStep } from '../types/unifiedWorkflow';
 
@@ -27,6 +29,7 @@ interface WorkflowNavProps {
   googleConnected: boolean;
   googleEmail?: string;
   onConnectGoogle?: () => void;
+  onOpenGoogleSettings?: () => void;
   printifyCreated: boolean;
 }
 
@@ -67,8 +70,14 @@ const STEPS: {
     icon: Sheet,
   },
   {
+    id: 'pinterest',
+    title: '6. Pinterest Bulk CSV',
+    subtitle: 'Auto-populate pins',
+    icon: Share2,
+  },
+  {
     id: 'printify',
-    title: '6. Printify Publishing',
+    title: '7. Printify Publishing',
     subtitle: 'Create a Printify draft',
     icon: UploadCloud,
   },
@@ -86,6 +95,7 @@ export const WorkflowNav: React.FC<WorkflowNavProps> = ({
   googleConnected,
   googleEmail,
   onConnectGoogle,
+  onOpenGoogleSettings,
   printifyCreated,
 }) => {
   const isStepDone = (stepId: ProductWorkflowStep): boolean => {
@@ -100,6 +110,8 @@ export const WorkflowNav: React.FC<WorkflowNavProps> = ({
         return hasListing;
       case 'export':
         return isReadyForExport;
+      case 'pinterest':
+        return hasListing && (hasDesign || mockupsCount > 0);
       case 'printify':
         return printifyCreated;
       default:
@@ -153,6 +165,18 @@ export const WorkflowNav: React.FC<WorkflowNavProps> = ({
             >
               <Link2 className="h-3.5 w-3.5 text-indigo-400" />
               <span>Connect Google Drive</span>
+            </button>
+          )}
+
+          {onOpenGoogleSettings && (
+            <button
+              type="button"
+              onClick={onOpenGoogleSettings}
+              title="Google OAuth Settings & Diagnostics"
+              className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-900/90 hover:bg-slate-800 px-2 py-1.5 text-xs text-slate-300 hover:text-white transition cursor-pointer"
+            >
+              <Key className="h-3.5 w-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">OAuth Settings</span>
             </button>
           )}
         </div>

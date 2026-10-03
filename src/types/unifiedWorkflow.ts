@@ -9,6 +9,7 @@ export type ProductWorkflowStep =
   | 'drive'
   | 'listing'
   | 'export'
+  | 'pinterest'
   | 'printify';
 
 export type ProductStatus = 'DRAFT' | 'READY' | 'PROCESSING' | 'PUBLISHED' | 'ERROR';

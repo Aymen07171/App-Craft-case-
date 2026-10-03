@@ -101,6 +101,25 @@ export const PrintifyPublishPanel: React.FC<Props> = ({ product, designs, onUpda
   const selectedVariants = useMemo(() => variants.filter((item) => enabledVariantIds.has(String(item.id))), [variants, enabledVariantIds]);
   const selectedMockupSlots = product.printify.selectedMockupSlots ?? product.mockups
     .filter((mockup) => mockup.fileUrl || mockup.localUrl).map((mockup) => mockup.slotIndex);
+
+  const selectableDesigns = useMemo(() => {
+    const list = [...designs];
+    if (product.design && product.design.localUrl) {
+      const alreadyInList = list.some((d) => d.id === product.design.id || d.imageUrl === product.design.localUrl);
+      if (!alreadyInList) {
+        list.push({
+          id: product.design.id || 'custom-uploaded-active',
+          title: product.design.title || product.designName || 'Custom Uploaded Design',
+          prompt: product.design.prompt || '',
+          imageUrl: product.design.localUrl || product.design.fileUrl || '',
+          niche: product.design.niche || '',
+          createdAt: Date.now(),
+          placeholders: {},
+        });
+      }
+    }
+    return list;
+  }, [designs, product.design, product.designName]);
   const uploadedMockupCount = Math.max(0, (product.printify.uploadedImageIds?.length ?? 0) - 1);
   const savedProductId = product.automation.printifyProductId;
   const selectedShop = shops.find((shop) => String(shop.id) === selectedShopId);
@@ -278,6 +297,21 @@ export const PrintifyPublishPanel: React.FC<Props> = ({ product, designs, onUpda
     if (selected.has(String(variant.id))) selected.delete(String(variant.id)); else selected.add(String(variant.id));
     setReviewed(false);
     updatePrintify({ variantIds: [...selected], selectedModels: variants.filter((item) => selected.has(String(item.id))).map((item) => item.title) });
+  };
+  const selectAllVariants = () => {
+    const availableIds = variants.filter((v) => v.is_available !== false).map((v) => String(v.id));
+    setReviewed(false);
+    updatePrintify({
+      variantIds: availableIds,
+      selectedModels: variants.filter((v) => availableIds.includes(String(v.id))).map((v) => v.title || `Variant ${v.id}`),
+    });
+  };
+  const clearAllVariants = () => {
+    setReviewed(false);
+    updatePrintify({
+      variantIds: [],
+      selectedModels: [],
+    });
   };
   const toggleMockup = (slotIndex: number) => {
     const selected = new Set(selectedMockupSlots);
@@ -496,11 +530,16 @@ export const PrintifyPublishPanel: React.FC<Props> = ({ product, designs, onUpda
 
           <div className="border-t border-slate-800 pt-4">
             <div className="mb-2 flex items-center justify-between gap-2"><div><h4 className="text-xs font-semibold text-white">Design artwork</h4><p className="mt-1 text-[11px] text-slate-500">This artwork will be placed on the selected Printify variants.</p></div><span className="text-[10px] text-slate-500">{product.design.title || product.designName}</span></div>
-            {designs.length > 0 && <div className="mb-3 grid gap-2 sm:grid-cols-2">
-              {designs.map((design) => <label key={design.id} className={`flex items-center gap-2 rounded-lg border p-2 text-xs ${product.design.id === design.id ? 'border-indigo-400/70 bg-indigo-400/10 text-white' : 'border-slate-800 text-slate-300'} ${savedProductId || publishing ? 'opacity-60' : 'cursor-pointer'}`}>
-                <input type="radio" name="printify-design" checked={product.design.id === design.id} disabled={Boolean(savedProductId) || publishing} onChange={() => selectDesign(design)} className="accent-indigo-400" />
-                <span className="min-w-0 truncate">{design.title}</span>
-              </label>)}
+            {selectableDesigns.length > 0 && <div className="mb-3 grid gap-2 sm:grid-cols-2">
+              {selectableDesigns.map((design) => {
+                const isSelected = Boolean(product.design.id === design.id || (product.design.localUrl && product.design.localUrl === design.imageUrl));
+                return (
+                  <label key={design.id} className={`flex items-center gap-2 rounded-lg border p-2 text-xs ${isSelected ? 'border-indigo-400/70 bg-indigo-400/10 text-white' : 'border-slate-800 text-slate-300'} ${savedProductId || publishing ? 'opacity-60' : 'cursor-pointer'}`}>
+                    <input type="radio" name="printify-design" checked={isSelected} disabled={Boolean(savedProductId) || publishing} onChange={() => selectDesign(design)} className="accent-indigo-400" />
+                    <span className="min-w-0 truncate">{design.title}</span>
+                  </label>
+                );
+              })}
             </div>}
             <div className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950/70 p-2.5">
               {product.design.localUrl || product.design.fileUrl ? <img src={product.design.localUrl || product.design.fileUrl} alt={product.design.title || 'Selected design'} className="h-16 w-12 rounded border border-slate-700 object-cover" /> : <span className="flex h-16 w-12 items-center justify-center rounded border border-dashed border-slate-700 text-slate-500"><ImageIcon className="h-5 w-5" /></span>}
@@ -527,8 +566,45 @@ export const PrintifyPublishPanel: React.FC<Props> = ({ product, designs, onUpda
           </div>
 
           {blueprintId && providerId && <div className="border-t border-slate-800 pt-4">
-            <div className="mb-2 flex items-center justify-between"><div><h4 className="text-xs font-semibold text-white">Variants to include</h4><p className="mt-1 text-[11px] text-slate-500">Catalog production costs are shown per variant when available.</p></div>
-              <button type="button" onClick={() => setVariantsReload((value) => value + 1)} disabled={variantsLoading} className="inline-flex items-center gap-1 text-[11px] text-indigo-300 hover:text-indigo-200 disabled:opacity-50"><RefreshCw className={`h-3 w-3 ${variantsLoading ? 'animate-spin' : ''}`} />{variantsLoading ? 'Loading…' : 'Reload'}</button></div>
+            <div className="mb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h4 className="text-xs font-semibold text-white">Variants to include</h4>
+                <p className="mt-1 text-[11px] text-slate-500">Catalog production costs are shown per variant when available.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {variants.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={selectAllVariants}
+                      disabled={variantsLoading || Boolean(savedProductId) || publishing}
+                      className="inline-flex items-center gap-1 text-[11px] text-indigo-300 hover:text-indigo-200 disabled:opacity-40 hover:underline"
+                    >
+                      Select all
+                    </button>
+                    <span className="text-slate-700 text-xs">|</span>
+                    <button
+                      type="button"
+                      onClick={clearAllVariants}
+                      disabled={variantsLoading || Boolean(savedProductId) || publishing}
+                      className="inline-flex items-center gap-1 text-[11px] text-slate-300 hover:text-slate-200 disabled:opacity-40 hover:underline"
+                    >
+                      Clear all
+                    </button>
+                    <span className="text-slate-700 text-xs">|</span>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setVariantsReload((value) => value + 1)}
+                  disabled={variantsLoading}
+                  className="inline-flex items-center gap-1 text-[11px] text-indigo-300 hover:text-indigo-200 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3 w-3 ${variantsLoading ? 'animate-spin' : ''}`} />
+                  {variantsLoading ? 'Loading…' : 'Reload'}
+                </button>
+              </div>
+            </div>
             {variantsError && <p className="mb-2 rounded-md border border-amber-800/60 bg-amber-950/30 p-2.5 text-xs text-amber-200">{variantsError}</p>}
             {variants.length > 0 && <div className="max-h-52 space-y-1 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950 p-2">
               {variants.map((variant) => {
