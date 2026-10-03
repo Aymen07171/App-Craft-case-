@@ -68,46 +68,6 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
   // AI suggestions loading states per tag
   const [suggestingTag, setSuggestingTag] = useState<string | null>(null);
 
-  // Gemini Title & Keywords state
-  const [isRegeneratingMeta, setIsRegeneratingMeta] = useState<boolean>(false);
-  const [copiedMeta, setCopiedMeta] = useState<'title' | 'keywords' | null>(null);
-
-  const handleCopyMetaText = (text: string, type: 'title' | 'keywords') => {
-    navigator.clipboard.writeText(text);
-    setCopiedMeta(type);
-    setTimeout(() => setCopiedMeta(null), 2000);
-  };
-
-  const handleRegenerateKeywords = async () => {
-    if (!activeDesign) return;
-    setIsRegeneratingMeta(true);
-    try {
-      const res = await fetch('/design-api/generate-keywords-title', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: activeDesign.prompt,
-          designTitle: activeDesign.title,
-          niche: activeDesign.niche,
-          imageDataUrl: activeDesign.imageUrl,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.title) {
-        const updated = {
-          ...activeDesign,
-          title: data.title,
-          keywords: data.primaryKeywords || [],
-        };
-        onSelectDesign(updated);
-      }
-    } catch (err) {
-      console.error('Error generating keywords/title:', err);
-    } finally {
-      setIsRegeneratingMeta(false);
-    }
-  };
-
   // Lightbox Modal
   const [lightboxOpen, setLightboxOpen] = useState<boolean>(false);
 
@@ -278,7 +238,6 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
           prompt: dynamicPrompt,
           aspectRatio,
           seed: chosenSeed,
-          niche: currentPreset.name,
         }),
       });
 
@@ -290,7 +249,7 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
 
       const newDesign: GeneratedDesign = {
         id: `design-${Date.now()}`,
-        title: data.title || `${currentPreset.name} Art`,
+        title: `${currentPreset.name} Art`,
         prompt: dynamicPrompt,
         imageUrl: data.imageUrl,
         sourceUrl: data.sourceUrl,
@@ -301,8 +260,6 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
         aspectRatio,
         width: data.width,
         height: data.height,
-        keywords: data.keywords || [],
-        provider: data.provider,
       };
 
       onDesignGenerated(newDesign);
@@ -880,90 +837,6 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
                     <span>Send Artwork to Lifestyle Mockup Pipeline</span>
                     <ExternalLink className="w-3.5 h-3.5" />
                   </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Gemini Title & SEO Keywords Showcase Card */}
-          {activeDesign && (
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400">
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-white">Gemini Title &amp; SEO Keywords</h3>
-                    <p className="text-[11px] text-slate-400">Powered by Gemini 3.8 Flash</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRegenerateKeywords}
-                  disabled={isRegeneratingMeta}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-xs font-medium border border-indigo-500/30 transition cursor-pointer"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isRegeneratingMeta ? 'animate-spin' : ''}`} />
-                  <span>{isRegeneratingMeta ? 'Generating...' : 'Regenerate'}</span>
-                </button>
-              </div>
-
-              {/* Title Section */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400 font-medium">Product Title:</span>
-                  <button
-                    onClick={() => handleCopyMetaText(activeDesign.title, 'title')}
-                    className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 cursor-pointer"
-                  >
-                    {copiedMeta === 'title' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                    <span>{copiedMeta === 'title' ? 'Copied' : 'Copy Title'}</span>
-                  </button>
-                </div>
-                <p className="text-xs bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-slate-200 font-medium leading-relaxed">
-                  {activeDesign.title}
-                </p>
-              </div>
-
-              {/* Keywords Section */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400 font-medium">Primary Search Keywords:</span>
-                  {activeDesign.keywords && activeDesign.keywords.length > 0 && (
-                    <button
-                      onClick={() => handleCopyMetaText(activeDesign.keywords!.join(', '), 'keywords')}
-                      className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 cursor-pointer"
-                    >
-                      {copiedMeta === 'keywords' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedMeta === 'keywords' ? 'Copied All' : 'Copy All'}</span>
-                    </button>
-                  )}
-                </div>
-
-                {activeDesign.keywords && activeDesign.keywords.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {activeDesign.keywords.map((kw, i) => (
-                      <span
-                        key={i}
-                        className="px-2.5 py-1 rounded-lg text-xs bg-slate-950 text-indigo-200 border border-indigo-500/20 font-medium"
-                      >
-                        {kw}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-slate-400">
-                    <span>Click to analyze this design with Gemini for high-intent keywords.</span>
-                    <button
-                      type="button"
-                      onClick={handleRegenerateKeywords}
-                      disabled={isRegeneratingMeta}
-                      className="text-indigo-400 hover:text-indigo-300 font-medium underline"
-                    >
-                      Generate Keywords
-                    </button>
-                  </div>
                 )}
               </div>
             </div>

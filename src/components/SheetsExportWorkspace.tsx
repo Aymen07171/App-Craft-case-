@@ -31,9 +31,6 @@ interface SheetsExportWorkspaceProps {
   onConnectGoogle: () => void;
   onUpdateProduct: (updated: UnifiedProductRecord) => void;
   onStartNewProduct: () => void;
-  workflowMode?: string;
-  onSelectWorkflowMode?: (mode: any) => void;
-  workflowProducts?: Record<string, UnifiedProductRecord>;
 }
 
 export const SheetsExportWorkspace: React.FC<SheetsExportWorkspaceProps> = ({
@@ -42,8 +39,6 @@ export const SheetsExportWorkspace: React.FC<SheetsExportWorkspaceProps> = ({
   onConnectGoogle,
   onUpdateProduct,
   onStartNewProduct,
-  workflowMode,
-  onSelectWorkflowMode,
 }) => {
   const [spreadsheets, setSpreadsheets] = useState<GoogleSpreadsheetRef[]>([]);
   const [selectedSpreadsheetId, setSelectedSpreadsheetId] = useState<string>('');
@@ -238,50 +233,6 @@ export const SheetsExportWorkspace: React.FC<SheetsExportWorkspaceProps> = ({
             )}
           </div>
         </div>
-
-        {/* Workflow Mode Selector in Sheets Export Workspace */}
-        {onSelectWorkflowMode && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Sheet Export Workflow Source:</span>
-            </div>
-            <div className="flex rounded-lg bg-slate-900 p-1 border border-slate-800 text-xs">
-              <button
-                type="button"
-                onClick={() => onSelectWorkflowMode('workflow-a')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
-                  (workflowMode || product.workflowMode) === 'workflow-a'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Workflow A (AI Studio)
-              </button>
-              <button
-                type="button"
-                onClick={() => onSelectWorkflowMode('workflow-b')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
-                  (workflowMode || product.workflowMode) === 'workflow-b'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Workflow B (Upload + AI)
-              </button>
-              <button
-                type="button"
-                onClick={() => onSelectWorkflowMode('workflow-c')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
-                  (workflowMode || product.workflowMode) === 'workflow-c'
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Workflow C (Custom Mockups)
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Progress Alert */}
         {exportProgress && (

@@ -1,12 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Upload, Sparkles, Layers, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Download } from 'lucide-react';
 import JSZip from 'jszip';
 import { WorkflowNav } from './components/WorkflowNav';
 import { DesignStudio } from './design-studio/components/DesignStudio';
 import { WorkflowStudio } from './components/WorkflowStudio';
-import { CustomDesignUpload } from './components/CustomDesignUpload';
-import { CustomMockupManager } from './components/CustomMockupManager';
-import { FinalValidationPreview } from './components/FinalValidationPreview';
 import { DriveAssetManager } from './components/DriveAssetManager';
 import { ListingWorkspace } from './components/ListingWorkspace';
 import { SheetsExportWorkspace } from './components/SheetsExportWorkspace';
@@ -16,19 +13,20 @@ import { PRINTIFY_TEMPLATES } from './data/printifyReferences';
 import {
   ProductWorkflowStep,
   UnifiedProductRecord,
-  WorkflowMode,
 } from './types/unifiedWorkflow';
 import { GeneratedWorkflowMockup, MockupWorkflowState } from './types';
 import {
   createInitialProductRecord,
   saveProductRecord,
   loadStoredProducts,
-  getInitialWorkflowMap,
-  saveWorkflowMap,
 } from './services/productWorkflowManager';
 import { connectGoogleDriveAndSheets } from './services/unifiedGoogleService';
+import firebaseConfig from '../firebase-applet-config.json';
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  firebaseConfig.oAuthClientId ||
+  '171360328307-aqp8b3ko9t1sirdgeu670g4etetsntrm.apps.googleusercontent.com';
 
 export const INITIAL_VITRAIL_DESIGN: GeneratedDesign = {
   id: 'preset-sample-vitrail-01',
@@ -69,14 +67,6 @@ Do not include: phone, phone case, mockup, device, realistic photography, 3D ren
   },
   isPreset: true,
   aspectRatio: '9:16',
-  keywords: [
-    'stained glass phone case',
-    'sleeping fox case',
-    'woodland wildlife cover',
-    'cathedral vitrail art',
-    'autumn sunburst case',
-    'art nouveau phone cover',
-  ],
 };
 
 const generateCaseScene = async (
@@ -120,73 +110,17 @@ const generateCaseScene = async (
 };
 
 export default function App() {
-  // 1. Unified Pipeline Step & Workflow Mode
+  // 1. Unified Pipeline Step: design -> mockup -> drive -> listing -> export
   const [pipelineStep, setPipelineStep] = useState<ProductWorkflowStep>('design');
-  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('workflow-a');
-  const [designTab, setDesignTab] = useState<'ai' | 'upload'>('ai');
-  const [mockupTab, setMockupTab] = useState<'ai' | 'upload'>('ai');
 
-  // 2. Centralized Isolated Products per Workflow Mode
-  const [workflowProducts, setWorkflowProducts] = useState<Record<WorkflowMode, UnifiedProductRecord>>(() => {
-    return getInitialWorkflowMap(
+  // 2. Centralized Product Record State
+  const [product, setProduct] = useState<UnifiedProductRecord>(() => {
+    return createInitialProductRecord(
       INITIAL_VITRAIL_DESIGN.title,
       INITIAL_VITRAIL_DESIGN.prompt,
       INITIAL_VITRAIL_DESIGN.imageUrl
     );
   });
-
-  const product = workflowProducts[workflowMode] || workflowProducts['workflow-a'];
-
-  const handleUpdateProduct = (updated: UnifiedProductRecord, targetMode?: WorkflowMode) => {
-    const mode = targetMode || updated.workflowMode || workflowMode;
-    const finalRecord: UnifiedProductRecord = {
-      ...updated,
-      workflowMode: mode,
-    };
-    setWorkflowProducts((prev) => {
-      const next = {
-        ...prev,
-        [mode]: finalRecord,
-      };
-      saveWorkflowMap(next);
-      return next;
-    });
-    saveProductRecord(finalRecord);
-  };
-
-  const handleSelectWorkflowMode = (mode: WorkflowMode) => {
-    setWorkflowMode(mode);
-    const targetProduct = workflowProducts[mode] || workflowProducts['workflow-a'];
-
-    if (mode === 'workflow-a') {
-      setDesignTab('ai');
-      setMockupTab('ai');
-      if (activeDesign?.imageUrl) {
-        setMockupWorkflow((prev) => ({
-          ...prev,
-          artwork: {
-            fileName: `${(activeDesign.title || 'design').toLowerCase().replace(/[^a-z0-9]/g, '-')}.png`,
-            imageUrl: activeDesign.imageUrl,
-          },
-        }));
-      }
-    } else if (mode === 'workflow-b') {
-      setDesignTab('upload');
-      setMockupTab('ai');
-      if (targetProduct.design.localUrl) {
-        setMockupWorkflow((prev) => ({
-          ...prev,
-          artwork: {
-            fileName: `${(targetProduct.design.title || 'custom-artwork').toLowerCase().replace(/[^a-z0-9]/g, '-')}.png`,
-            imageUrl: targetProduct.design.localUrl,
-          },
-        }));
-      }
-    } else if (mode === 'workflow-c') {
-      setDesignTab('upload');
-      setMockupTab('upload');
-    }
-  };
 
   // 3. Google OAuth & Drive Authentication State
   const [googleToken, setGoogleToken] = useState<string | null>(null);
@@ -195,7 +129,7 @@ export default function App() {
   const [isDownloadingAssets, setIsDownloadingAssets] = useState(false);
   const [assetDownloadError, setAssetDownloadError] = useState<string | null>(null);
 
-  // 4. Design Studio State (Preserved for Workflow A)
+  // 4. Design Studio State (Preserved)
   const [designs, setDesigns] = useState<GeneratedDesign[]>([INITIAL_VITRAIL_DESIGN]);
   const [activeDesign, setActiveDesign] = useState<GeneratedDesign | null>(INITIAL_VITRAIL_DESIGN);
 
@@ -218,6 +152,12 @@ export default function App() {
     generationError: null,
   });
 
+  // Save product record whenever updated
+  const handleUpdateProduct = (updated: UnifiedProductRecord) => {
+    setProduct(updated);
+    saveProductRecord(updated);
+  };
+
   // Google OAuth flow
   const handleConnectGoogle = async () => {
     setGoogleAuthError(null);
@@ -231,18 +171,17 @@ export default function App() {
     }
   };
 
-  // When a design is generated in Design Studio, update Workflow A specifically
+  // When a design is generated in Design Studio, update the centralized product design
   const handleDesignGenerated = (newDesign: GeneratedDesign) => {
     setDesigns((prev) => [newDesign, ...prev]);
     setActiveDesign(newDesign);
 
-    const prevA = workflowProducts['workflow-a'];
-    const updatedA: UnifiedProductRecord = {
-      ...prevA,
+    // Keep product record connected
+    const updated: UnifiedProductRecord = {
+      ...product,
       designName: newDesign.title,
-      workflowMode: 'workflow-a',
       design: {
-        ...prevA.design,
+        ...product.design,
         id: newDesign.id,
         title: newDesign.title,
         prompt: newDesign.prompt,
@@ -250,17 +189,19 @@ export default function App() {
         sourceUrl: newDesign.sourceUrl,
         niche: newDesign.niche,
         aspectRatio: newDesign.aspectRatio,
+        // Reset Drive file ID if design changed so it gets uploaded fresh
         fileId: '',
         fileUrl: '',
         verified: false,
       },
       product: {
-        ...prevA.product,
-        sku: prevA.productId,
+        ...product.product,
+        sku: product.productId,
       },
     };
-    handleUpdateProduct(updatedA, 'workflow-a');
+    handleUpdateProduct(updated);
 
+    // Also update Mockup Studio artwork automatically!
     setMockupWorkflow((prev) => ({
       ...prev,
       artwork: {
@@ -273,13 +214,12 @@ export default function App() {
   const handleSelectDesign = (selected: GeneratedDesign) => {
     setActiveDesign(selected);
 
-    const prevA = workflowProducts['workflow-a'];
-    const updatedA: UnifiedProductRecord = {
-      ...prevA,
+    // Sync to product record
+    const updated: UnifiedProductRecord = {
+      ...product,
       designName: selected.title,
-      workflowMode: 'workflow-a',
       design: {
-        ...prevA.design,
+        ...product.design,
         id: selected.id,
         title: selected.title,
         prompt: selected.prompt,
@@ -289,8 +229,9 @@ export default function App() {
         aspectRatio: selected.aspectRatio,
       },
     };
-    handleUpdateProduct(updatedA, 'workflow-a');
+    handleUpdateProduct(updated);
 
+    // Sync to Mockup Studio
     setMockupWorkflow((prev) => ({
       ...prev,
       artwork: {
@@ -322,7 +263,6 @@ export default function App() {
     reader.onload = () => {
       if (typeof reader.result !== 'string') return;
       const imageUrl = reader.result as string;
-      const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim();
       setMockupWorkflow((current) => ({
         ...current,
         artwork: { fileName: file.name, imageUrl },
@@ -331,23 +271,18 @@ export default function App() {
         generationError: null,
       }));
 
-      const currentRecord = workflowProducts[workflowMode];
-      handleUpdateProduct(
-        {
-          ...currentRecord,
-          designName: cleanName,
-          workflowMode,
-          design: {
-            ...currentRecord.design,
-            title: cleanName,
-            localUrl: imageUrl,
-            fileId: '',
-            fileUrl: '',
-            verified: false,
-          },
+      // Update product record
+      handleUpdateProduct({
+        ...product,
+        design: {
+          ...product.design,
+          title: file.name.replace(/\.[^/.]+$/, ''),
+          localUrl: imageUrl,
+          fileId: '',
+          fileUrl: '',
+          verified: false,
         },
-        workflowMode
-      );
+      });
     };
     reader.readAsDataURL(file);
   };
@@ -467,13 +402,12 @@ export default function App() {
       }));
 
       // Synchronize generated mockups into centralized product model slots (0..5)
-      const currentRecord = workflowProducts[workflowMode];
       const successfulMockups = generatedMockups
         .filter((m) => m.imageUrl)
         .slice(0, 6)
         .map((m, slotIndex) => {
           // Check if product already has an existing Drive fileId for this slot
-          const existingSlot = currentRecord.mockups.find((item) => item.slotIndex === slotIndex);
+          const existingSlot = product.mockups.find((item) => item.slotIndex === slotIndex);
           return {
             slotIndex,
             modelId: m.modelId,
@@ -489,14 +423,14 @@ export default function App() {
         });
 
       const updatedProduct: UnifiedProductRecord = {
-        ...currentRecord,
+        ...product,
         mockups: successfulMockups,
         printify: {
-          ...currentRecord.printify,
+          ...product.printify,
           selectedModels: references.map((r) => r.modelName),
         },
       };
-      handleUpdateProduct(updatedProduct, workflowMode);
+      handleUpdateProduct(updatedProduct);
     } catch (err: any) {
       setMockupWorkflow((current) => ({
         ...current,
@@ -538,8 +472,7 @@ export default function App() {
       }));
 
       // Update specific mockup slot in product record
-      const currentRecord = workflowProducts[workflowMode];
-      const updatedMockups = currentRecord.mockups.map((m) =>
+      const updatedMockups = product.mockups.map((m) =>
         m.modelId === modelId
           ? {
               ...m,
@@ -551,7 +484,7 @@ export default function App() {
             }
           : m
       );
-      handleUpdateProduct({ ...currentRecord, mockups: updatedMockups }, workflowMode);
+      handleUpdateProduct({ ...product, mockups: updatedMockups });
     } catch (error) {
       setMockupWorkflow((current) => ({
         ...current,
@@ -567,12 +500,12 @@ export default function App() {
   // Start a fresh product with new sequential Product ID
   const handleStartNewProduct = () => {
     const nextProduct = createInitialProductRecord(
-      workflowMode === 'workflow-a' ? (activeDesign?.title || 'New AI Phone Case Art') : 'New Custom Phone Case Art',
-      workflowMode === 'workflow-a' ? (activeDesign?.prompt || '') : '',
-      workflowMode === 'workflow-a' ? (activeDesign?.imageUrl || '') : '',
-      workflowMode
+      activeDesign?.title || 'New Phone Case Art',
+      activeDesign?.prompt || '',
+      activeDesign?.imageUrl || ''
     );
-    handleUpdateProduct(nextProduct, workflowMode);
+    setProduct(nextProduct);
+    saveProductRecord(nextProduct);
     setPipelineStep('design');
   };
 
@@ -659,8 +592,6 @@ export default function App() {
         googleConnected={Boolean(googleToken)}
         googleEmail={googleEmail}
         onConnectGoogle={handleConnectGoogle}
-        currentWorkflowMode={workflowMode}
-        onSelectWorkflowMode={handleSelectWorkflowMode}
       />
 
       {/* Main View Area Rendered by Pipeline Step */}
@@ -668,188 +599,107 @@ export default function App() {
         {/* Step 1: Design Generation */}
         {pipelineStep === 'design' && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
               <div>
                 <h1 className="text-xl font-bold text-white sm:text-2xl">
-                  Step 1: Design Generation &amp; Artwork Setup
+                  Step 1: Design Generation & Prompt Customization
                 </h1>
                 <p className="text-xs text-slate-400 mt-1">
-                  Create AI artwork or upload custom artwork for Product <span className="font-mono text-indigo-300 font-semibold">{product.productId}</span>.
+                  Design custom 2D artwork for Product <span className="font-mono text-indigo-300 font-semibold">{product.productId}</span> with dynamic niche placeholders.
                 </p>
-              </div>
-
-              {/* Workflow Mode / Source Toggle */}
-              <div className="flex rounded-xl bg-slate-900 p-1 border border-slate-800 self-start sm:self-auto">
-                <button
-                  type="button"
-                  onClick={() => handleSelectWorkflowMode('workflow-a')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                    workflowMode === 'workflow-a'
-                      ? 'bg-indigo-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>AI Design Studio (Workflow A)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSelectWorkflowMode('workflow-b')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                    workflowMode === 'workflow-b' || workflowMode === 'workflow-c'
-                      ? 'bg-indigo-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Upload Custom Design (Workflow B &amp; C)</span>
-                </button>
               </div>
             </div>
 
-            {designTab === 'ai' ? (
-              <DesignStudio
-                activeDesign={activeDesign}
-                designs={designs}
-                onSelectDesign={handleSelectDesign}
-                onDeleteDesign={handleDeleteDesign}
-                onDesignGenerated={handleDesignGenerated}
-                onSendToMockup={handleSendDesignToMockup}
-              />
-            ) : (
-              <CustomDesignUpload
-                product={product}
-                onUpdateProduct={handleUpdateProduct}
-                onApplyDesignToMockup={() => setPipelineStep('mockup')}
-              />
-            )}
+            <DesignStudio
+              activeDesign={activeDesign}
+              designs={designs}
+              onSelectDesign={handleSelectDesign}
+              onDeleteDesign={handleDeleteDesign}
+              onDesignGenerated={handleDesignGenerated}
+              onSendToMockup={handleSendDesignToMockup}
+            />
           </div>
         )}
 
         {/* Step 2: Mockup Generation */}
         {pipelineStep === 'mockup' && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
               <div>
                 <h1 className="text-xl font-bold text-white sm:text-2xl">
-                  Step 2: Printify Product Mockup &amp; Custom Media
+                  Step 2: Printify Lifestyle Mockup Generation
                 </h1>
                 <p className="text-xs text-slate-400 mt-1">
-                  Generate AI lifestyle scenes or upload your own custom mockup gallery for <span className="font-mono text-indigo-300 font-semibold">{product.productId}</span>.
+                  Generate lifestyle mockups locally with ComfyUI, guided by the artwork and selected Printify case references for <span className="font-mono text-indigo-300 font-semibold">{product.productId}</span>.
                 </p>
               </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Sub-tabs toggle */}
-                <div className="flex rounded-xl bg-slate-900 p-1 border border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMockupTab('ai');
-                      if (workflowMode === 'workflow-c') handleSelectWorkflowMode('workflow-b');
-                    }}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                      mockupTab === 'ai'
-                        ? 'bg-indigo-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>AI Lifestyle Studio (Workflow A &amp; B)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMockupTab('upload');
-                      handleSelectWorkflowMode('workflow-c');
-                    }}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                      mockupTab === 'upload'
-                        ? 'bg-purple-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Layers className="w-3.5 h-3.5" />
-                    <span>Upload Custom Mockups (Workflow C)</span>
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleDownloadDesignAndMockups}
-                  disabled={isDownloadingAssets || !hasDownloadableMockups || !(activeDesign?.imageUrl || product.design.localUrl)}
-                  className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-3 py-2 text-xs font-semibold text-indigo-200 transition hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Download className="h-4 w-4" />
-                  {isDownloadingAssets ? 'Preparing ZIP…' : 'Download design + mockups'}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleDownloadDesignAndMockups}
+                disabled={isDownloadingAssets || !hasDownloadableMockups || !(activeDesign?.imageUrl || product.design.localUrl)}
+                className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-3 py-2 text-xs font-semibold text-indigo-200 transition hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Download className="h-4 w-4" />
+                {isDownloadingAssets ? 'Preparing ZIP…' : 'Download design + mockups'}
+              </button>
             </div>
             {assetDownloadError && <p role="alert" className="text-sm text-rose-300">{assetDownloadError}</p>}
 
-            {mockupTab === 'ai' ? (
-              <WorkflowStudio
-                workflow={mockupWorkflow}
-                onSelectStep={(activeStep) => setMockupWorkflow((current) => ({ ...current, activeStep }))}
-                onUploadArtwork={handleUploadArtwork}
-                onUploadProductReference={handleUploadProductReference}
-                onUploadSceneReference={handleUploadSceneReference}
-                onRemoveSceneReference={(imageId) =>
-                  setMockupWorkflow((current) => ({
-                    ...current,
-                    sceneReferenceImages: current.sceneReferenceImages.filter((image) => image.id !== imageId),
-                    generatedMockups: [],
-                    generatedImageUrl: null,
-                  }))
-                }
-                onGenerate={handleGenerateMockups}
-                onToggleReference={(productReferenceId) =>
-                  setMockupWorkflow((current) => ({
-                    ...current,
-                    productReferenceIds: current.productReferenceIds.includes(productReferenceId)
-                      ? current.productReferenceIds.filter((id) => id !== productReferenceId)
-                      : [...current.productReferenceIds, productReferenceId],
-                    generatedMockups: [],
-                    generatedImageUrl: null,
-                  }))
-                }
-                onSelectAllReferences={(productReferenceIds) =>
-                  setMockupWorkflow((current) => ({
-                    ...current,
-                    productReferenceIds,
-                    generatedMockups: [],
-                    generatedImageUrl: null,
-                  }))
-                }
-                onChangeSceneDescription={(sceneDescription) =>
-                  setMockupWorkflow((current) => ({
-                    ...current,
-                    sceneDescription,
-                  }))
-                }
-                onRemoveProductReference={(modelId) =>
-                  setMockupWorkflow((current) => {
-                    const productReferenceImages = { ...current.productReferenceImages };
-                    delete productReferenceImages[modelId];
-                    return { ...current, productReferenceImages };
-                  })
-                }
-                onRegenerateMockup={handleRegenerateMockup}
-                onRemoveMockup={(modelId) =>
-                  setMockupWorkflow((current) => ({
-                    ...current,
-                    generatedMockups: current.generatedMockups.filter((item) => item.modelId !== modelId),
-                  }))
-                }
-                onContinueToDrive={() => setPipelineStep('drive')}
-              />
-            ) : (
-              <CustomMockupManager
-                product={product}
-                onUpdateProduct={handleUpdateProduct}
-                onProceedToReview={() => setPipelineStep('listing')}
-              />
-            )}
+            <WorkflowStudio
+              workflow={mockupWorkflow}
+              onSelectStep={(activeStep) => setMockupWorkflow((current) => ({ ...current, activeStep }))}
+              onUploadArtwork={handleUploadArtwork}
+              onUploadProductReference={handleUploadProductReference}
+              onUploadSceneReference={handleUploadSceneReference}
+              onRemoveSceneReference={(imageId) =>
+                setMockupWorkflow((current) => ({
+                  ...current,
+                  sceneReferenceImages: current.sceneReferenceImages.filter((image) => image.id !== imageId),
+                  generatedMockups: [],
+                  generatedImageUrl: null,
+                }))
+              }
+              onGenerate={handleGenerateMockups}
+              onToggleReference={(productReferenceId) =>
+                setMockupWorkflow((current) => ({
+                  ...current,
+                  productReferenceIds: current.productReferenceIds.includes(productReferenceId)
+                    ? current.productReferenceIds.filter((id) => id !== productReferenceId)
+                    : [...current.productReferenceIds, productReferenceId],
+                  generatedMockups: [],
+                  generatedImageUrl: null,
+                }))
+              }
+              onSelectAllReferences={(productReferenceIds) =>
+                setMockupWorkflow((current) => ({
+                  ...current,
+                  productReferenceIds,
+                  generatedMockups: [],
+                  generatedImageUrl: null,
+                }))
+              }
+              onChangeSceneDescription={(sceneDescription) =>
+                setMockupWorkflow((current) => ({
+                  ...current,
+                  sceneDescription,
+                }))
+              }
+              onRemoveProductReference={(modelId) =>
+                setMockupWorkflow((current) => {
+                  const productReferenceImages = { ...current.productReferenceImages };
+                  delete productReferenceImages[modelId];
+                  return { ...current, productReferenceImages };
+                })
+              }
+              onRegenerateMockup={handleRegenerateMockup}
+              onRemoveMockup={(modelId) =>
+                setMockupWorkflow((current) => ({
+                  ...current,
+                  generatedMockups: current.generatedMockups.filter((item) => item.modelId !== modelId),
+                }))
+              }
+              onContinueToDrive={() => setPipelineStep('drive')}
+            />
           </div>
         )}
 
@@ -857,8 +707,6 @@ export default function App() {
         {pipelineStep === 'drive' && (
           <DriveAssetManager
             product={product}
-            workflowMode={workflowMode}
-            onSelectWorkflowMode={handleSelectWorkflowMode}
             googleToken={googleToken}
             onConnectGoogle={handleConnectGoogle}
             onUpdateProduct={handleUpdateProduct}
@@ -870,8 +718,6 @@ export default function App() {
         {pipelineStep === 'listing' && (
           <ListingWorkspace
             product={product}
-            workflowMode={workflowMode}
-            onSelectWorkflowMode={handleSelectWorkflowMode}
             onUpdateProduct={handleUpdateProduct}
             onContinueToExport={() => setPipelineStep('export')}
           />
@@ -881,9 +727,6 @@ export default function App() {
         {pipelineStep === 'export' && (
           <SheetsExportWorkspace
             product={product}
-            workflowMode={workflowMode}
-            onSelectWorkflowMode={handleSelectWorkflowMode}
-            workflowProducts={workflowProducts}
             googleToken={googleToken}
             onConnectGoogle={handleConnectGoogle}
             onUpdateProduct={handleUpdateProduct}
@@ -891,18 +734,17 @@ export default function App() {
           />
         )}
 
-        {/* Step 6: Printify Validation & Publishing */}
         {pipelineStep === 'printify' && (
-          <div className="space-y-8">
-            <FinalValidationPreview
-              product={product}
-              onUpdateProduct={handleUpdateProduct}
-              onNavigateToStep={(step) => setPipelineStep(step)}
-            />
-            
-            <div className="border-t border-slate-800 pt-8">
-              <PrintifyPublishPanel product={product} designs={designs} onUpdateProduct={handleUpdateProduct} />
+          <div className="space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div>
+                <h1 className="text-xl font-bold text-white sm:text-2xl">Step 6: Prepare & publish on Printify</h1>
+                <p className="mt-1 text-xs text-slate-400">
+                  Select this product’s artwork and mockups, set case variants, review your profit, and create or publish a Printify product.
+                </p>
+              </div>
             </div>
+            <PrintifyPublishPanel product={product} designs={designs} onUpdateProduct={handleUpdateProduct} />
           </div>
         )}
       </main>

@@ -5,7 +5,15 @@
  * Drive File Metadata Retrieval, Verification, and Resumable/Multipart Uploads.
  */
 
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import firebaseConfig from '../../firebase-applet-config.json';
 import { UnifiedProductRecord } from '../types/unifiedWorkflow';
+
+const getFirebaseAuth = () => {
+  const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+  return getAuth(app);
+};
 
 export const SHEET_HEADERS = [
   'Product_ID',
@@ -130,7 +138,34 @@ export const loadIdentityScript = (): Promise<void> => {
 export const connectGoogleDriveAndSheets = async (
   clientId: string
 ): Promise<{ token: string; email: string }> => {
-  if (!clientId) {
+  // 1. Try Firebase Auth popup flow (recommended for AI Studio OAuth)
+  try {
+    const auth = getFirebaseAuth();
+    const provider = new GoogleAuthProvider();
+    provider.addScope('https://www.googleapis.com/auth/drive.file');
+    provider.addScope('https://www.googleapis.com/auth/spreadsheets');
+    const result = await signInWithPopup(auth, provider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (credential?.accessToken) {
+      return {
+        token: credential.accessToken,
+        email: result.user?.email || 'Connected Google Account',
+      };
+    }
+  } catch (fbError: any) {
+    if (fbError?.code === 'auth/popup-closed-by-user' || fbError?.code === 'auth/cancelled-popup-request') {
+      throw new Error('Sign-in cancelled by user.');
+    }
+    console.warn('Firebase Auth popup error, falling back to GIS:', fbError);
+  }
+
+  // 2. Fallback to Google Identity Services
+  const effectiveClientId =
+    clientId ||
+    firebaseConfig.oAuthClientId ||
+    '171360328307-aqp8b3ko9t1sirdgeu670g4etetsntrm.apps.googleusercontent.com';
+
+  if (!effectiveClientId) {
     throw new Error('Google Client ID is missing. Please set VITE_GOOGLE_CLIENT_ID or connect via OAuth.');
   }
   await loadIdentityScript();
@@ -139,7 +174,7 @@ export const connectGoogleDriveAndSheets = async (
 
   const token = await new Promise<string>((resolve, reject) => {
     const client = oauth2.initTokenClient({
-      client_id: clientId,
+      client_id: effectiveClientId,
       scope: GOOGLE_SCOPES,
       callback: (response) => {
         if (response.error || !response.access_token) {

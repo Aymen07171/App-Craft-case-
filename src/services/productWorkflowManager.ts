@@ -3,7 +3,7 @@
  * Generates and associates CASE-00001 with design, mockups, Drive files, listing, and automation.
  */
 
-import { UnifiedProductRecord, WorkflowMode } from '../types/unifiedWorkflow';
+import { UnifiedProductRecord } from '../types/unifiedWorkflow';
 
 const PRODUCT_SEQUENCE_KEY = 'casecraft-product-sequence-v2';
 const PRODUCTS_STORE_KEY = 'casecraft-unified-products-v1';
@@ -28,14 +28,12 @@ export const getNextProductId = (): string => {
 export const createInitialProductRecord = (
   designName = 'Mystical Stained Glass Fox',
   designPrompt = '',
-  designLocalUrl = '',
-  workflowMode: WorkflowMode = 'workflow-a'
+  designLocalUrl = ''
 ): UnifiedProductRecord => {
   const productId = getNextProductId();
   return {
     productId,
     designName,
-    workflowMode,
     design: {
       title: designName,
       prompt: designPrompt,
@@ -75,64 +73,6 @@ export const createInitialProductRecord = (
       publishedDate: '',
     },
   };
-};
-
-const WORKFLOW_MAP_STORE_KEY = 'casecraft-workflow-modes-store-v1';
-
-export const getInitialWorkflowMap = (
-  initialVitrailTitle = 'Mystical Stained Glass Fox',
-  initialVitrailPrompt = 'Stained glass vitrail style illustration of a mystical fox in an enchanted autumn forest, vibrant glowing colors, intricate lead caming, cathedral window aesthetic, 2D graphic art',
-  initialVitrailUrl = ''
-): Record<WorkflowMode, UnifiedProductRecord> => {
-  try {
-    const raw = localStorage.getItem(WORKFLOW_MAP_STORE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed['workflow-a'] && parsed['workflow-b'] && parsed['workflow-c']) {
-        return parsed;
-      }
-    }
-  } catch (err) {
-    console.warn('Failed to load workflow products map:', err);
-  }
-
-  const recordA = createInitialProductRecord(
-    initialVitrailTitle,
-    initialVitrailPrompt,
-    initialVitrailUrl,
-    'workflow-a'
-  );
-
-  const recordB = createInitialProductRecord(
-    'Custom Uploaded Artwork',
-    'Custom user artwork graphic for premium protective tough phone case',
-    '',
-    'workflow-b'
-  );
-
-  const recordC = createInitialProductRecord(
-    'Custom Studio Artwork & Mockups',
-    'Custom graphic artwork with custom flatlay lifestyle mockups',
-    '',
-    'workflow-c'
-  );
-
-  const initialMap: Record<WorkflowMode, UnifiedProductRecord> = {
-    'workflow-a': recordA,
-    'workflow-b': recordB,
-    'workflow-c': recordC,
-  };
-
-  saveWorkflowMap(initialMap);
-  return initialMap;
-};
-
-export const saveWorkflowMap = (map: Record<WorkflowMode, UnifiedProductRecord>): void => {
-  try {
-    localStorage.setItem(WORKFLOW_MAP_STORE_KEY, JSON.stringify(map));
-  } catch (e) {
-    console.warn('Failed to save workflow map:', e);
-  }
 };
 
 export const loadStoredProducts = (): Record<string, UnifiedProductRecord> => {

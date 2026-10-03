@@ -1,46 +1,6 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <script>
-      (function() {
-        try {
-          if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
-            var activeFetch = window.fetch.bind(window);
-            var getter = function() { return activeFetch; };
-            var setter = function(fn) { if (typeof fn === 'function') activeFetch = fn; };
-            var targetObj = window;
-            while (targetObj) {
-              var desc = Object.getOwnPropertyDescriptor(targetObj, 'fetch');
-              if (desc) {
-                if (!desc.set) {
-                  try {
-                    Object.defineProperty(targetObj, 'fetch', {
-                      get: getter,
-                      set: setter,
-                      configurable: true,
-                      enumerable: true
-                    });
-                  } catch(e) {}
-                }
-                break;
-              }
-              targetObj = Object.getPrototypeOf(targetObj);
-            }
-            try {
-              var winDesc = Object.getOwnPropertyDescriptor(window, 'fetch');
-              if (!winDesc || !winDesc.set) {
-                Object.defineProperty(window, 'fetch', {
-                  get: getter,
-                  set: setter,
-                  configurable: true,
-                  enumerable: true
-                });
-              }
-            } catch(e) {}
-          }
-        } catch(e) {}
-      })();
-    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#020617" />

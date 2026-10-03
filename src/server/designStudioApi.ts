@@ -1,66 +1,91 @@
 import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import { GoogleGenAI } from '@google/genai';
-import {
-  getGeminiClient,
-  generateKeywordsAndTitle,
-  generateFreeImage,
-  generateContentWithRetry,
-} from './geminiService';
+import { GoogleGenAI, Type } from '@google/genai';
 import {
   describeHuggingFaceImageError,
   generateHuggingFaceImage,
   getQuotaStatus,
-  hasHuggingFaceImageFallback,
   isGeminiQuotaError,
 } from './imageGenerationFallback';
-
 const router = express.Router();
 
-async function resolveToDataUrl(imageUrl?: string): Promise<string | undefined> {
-  if (!imageUrl || typeof imageUrl !== 'string') return undefined;
-  if (/^data:image\/(?:png|jpe?g|webp|svg\+xml);base64,/i.test(imageUrl)) {
-    return imageUrl;
-  }
-  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-    try {
-      const res = await fetch(imageUrl, { signal: AbortSignal.timeout(10000) });
-      if (res.ok) {
-        const arrayBuf = await res.arrayBuffer();
-        const buf = Buffer.from(arrayBuf);
-        const mime = res.headers.get('content-type') || 'image/jpeg';
-        return `data:${mime};base64,${buf.toString('base64')}`;
-      }
-    } catch (err) {
-      console.warn('Failed to fetch remote image in resolveToDataUrl:', err);
+// API: Generate design artwork with Gemini image generation
+router.post('/generate-design', async (req, res) => {
+  const { prompt, aspectRatio = '9:16', seed } = req.body || {};
+  const allowedRatios = ['9:16', '1:1', '3:4', '4:3', '16:9'] as const;
+  const requestedRatio = String(aspectRatio);
+  const ratio = (allowedRatios as readonly string[]).includes(requestedRatio)
+    ? requestedRatio as (typeof allowedRatios)[number]
+    : '9:16';
+  const variation = Number.isFinite(Number(seed)) ? Number(seed) : Math.floor(Math.random() * 1_000_000_000);
+  try {
+    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+      return res.status(400).json({ error: 'Prompt is required' });
     }
-  }
-  if (imageUrl.startsWith('/') || imageUrl.startsWith('./') || imageUrl.startsWith('src/') || imageUrl.startsWith('public/')) {
-    const cleanPath = imageUrl.replace(/^\.\//, '').replace(/^\//, '');
-    const possiblePaths = [
-      path.join(process.cwd(), cleanPath),
-      path.join(process.cwd(), 'public', cleanPath),
-      path.join('/app/applet', cleanPath),
-      path.join('/app/applet/public', cleanPath),
-      path.resolve(cleanPath),
-      path.resolve('public', cleanPath),
-    ];
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
-        try {
-          const buf = fs.readFileSync(p);
-          const ext = path.extname(p).toLowerCase();
-          const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.svg' ? 'image/svg+xml' : 'image/jpeg';
-          return `data:${mime};base64,${buf.toString('base64')}`;
-        } catch {
-          // ignore
-        }
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey.startsWith('your_')) {
+      return res.status(503).json({
+        error: 'Image generation is not configured. Add your Gemini API key as GEMINI_API_KEY in .env and restart the app.',
+      });
+    }
+
+    const dimensions: Record<(typeof allowedRatios)[number], { width: number; height: number }> = {
+      '9:16': { width: 768, height: 1344 },
+      '1:1': { width: 1024, height: 1024 },
+      '3:4': { width: 768, height: 1024 },
+      '4:3': { width: 1024, height: 768 },
+      '16:9': { width: 1344, height: 768 },
+    };
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-lite-image',
+      contents: `Create original, polished phone-case artwork from this brief. Make the artwork edge-to-edge, visually clear, and free of text, logos, watermarks, mockup devices, or borders unless explicitly requested.\n\n${prompt.trim()}\n\nComposition variation: ${variation}.`,
+      config: { imageConfig: { aspectRatio: ratio } },
+    });
+
+    const imagePart = response.candidates?.[0]?.content?.parts?.find((part) => part.inlineData);
+    if (!imagePart?.inlineData?.data) {
+      throw new Error(response.text || 'Gemini did not return image data.');
+    }
+    const dataUrl = `data:${imagePart.inlineData.mimeType || 'image/png'};base64,${imagePart.inlineData.data}`;
+    const { width, height } = dimensions[ratio];
+
+    return res.json({
+      imageUrl: dataUrl,
+      seed: variation,
+      width,
+      height,
+      aspectRatio: ratio,
+    });
+  } catch (error: any) {
+    console.error('Error generating design with Gemini:', error);
+    if (isGeminiQuotaError(error)) {
+      try {
+        const fallback = await generateHuggingFaceImage(prompt.trim(), ratio, variation);
+        console.info(`Generated design with Hugging Face fallback model ${fallback.model}.`);
+        return res.json({
+          ...fallback,
+          seed: variation,
+          aspectRatio: ratio,
+          provider: 'Hugging Face',
+        });
+      } catch (fallbackError) {
+        console.error('Hugging Face design fallback failed:', fallbackError);
+        const fallbackMessage = fallbackError instanceof Error && fallbackError.message.includes('not configured')
+          ? fallbackError.message
+          : describeHuggingFaceImageError(fallbackError);
+        return res.status(429).json({ error: `Gemini image quota is unavailable. ${fallbackMessage}` });
       }
     }
+
+    const status = getQuotaStatus(error);
+    const userError = status === 401 || status === 403
+      ? 'Gemini rejected the API key. Check GEMINI_API_KEY in .env.'
+      : status === 429
+        ? 'Gemini API quota is unavailable. Check your Google AI quota or try again later.'
+        : error?.message || 'Failed to generate artwork with Gemini.';
+    return res.status(status === 429 ? 429 : 502).json({ error: userError });
   }
-  return undefined;
-}
+});
 
 // Fallback curated suggestions per common placeholder tag
 const FALLBACK_SUGGESTIONS: Record<string, string[]> = {
@@ -106,158 +131,36 @@ const FALLBACK_SUGGESTIONS: Record<string, string[]> = {
   ],
 };
 
-// API: Generate design artwork with free Gemini API + Title & Keywords
-router.post('/generate-design', async (req, res) => {
-  const { prompt, aspectRatio = '9:16', seed, niche = '' } = req.body || {};
-  const allowedRatios = ['9:16', '1:1', '3:4', '4:3', '16:9'] as const;
-  const requestedRatio = String(aspectRatio);
-  const ratio = (allowedRatios as readonly string[]).includes(requestedRatio)
-    ? (requestedRatio as (typeof allowedRatios)[number])
-    : '9:16';
-  const variation = Number.isFinite(Number(seed)) ? Number(seed) : Math.floor(Math.random() * 1_000_000_000);
-
-  if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
-    return res.status(400).json({ error: 'Prompt is required' });
-  }
-
-  const dimensions: Record<(typeof allowedRatios)[number], { width: number; height: number }> = {
-    '9:16': { width: 768, height: 1344 },
-    '1:1': { width: 1024, height: 1024 },
-    '3:4': { width: 768, height: 1024 },
-    '4:3': { width: 1024, height: 768 },
-    '16:9': { width: 1344, height: 768 },
-  };
-
-  const { width, height } = dimensions[ratio];
-
-  // 1. Generate intelligent Title & Keywords using Gemini 3.8 Flash
-  let aiTitle = `${niche || 'Original'} Phone Case Art`;
-  let aiKeywords: string[] = [];
-
-  try {
-    const meta = await generateKeywordsAndTitle({
-      prompt: prompt.trim(),
-      niche,
-    });
-    if (meta.title) aiTitle = meta.title;
-    if (meta.primaryKeywords?.length) aiKeywords = meta.primaryKeywords;
-  } catch (metaErr) {
-    console.warn('Metadata generation with Gemini skipped:', metaErr);
-  }
-
-  // 2. Image Generation: Try Gemini 3.1 Flash Lite Image first, then free AI engine
-  const ai = getGeminiClient();
-  let generatedImageUrl: string | null = null;
-  let providerName = 'Gemini AI';
-
-  if (ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite-image',
-        contents: `Create original, polished phone-case artwork from this brief. Make the artwork edge-to-edge, visually clear, and free of text, logos, watermarks, mockup devices, or borders unless explicitly requested.\n\n${prompt.trim()}\n\nComposition variation: ${variation}.`,
-        config: { imageConfig: { aspectRatio: ratio } },
-      });
-
-      const imagePart = response.candidates?.[0]?.content?.parts?.find((part) => part.inlineData);
-      if (imagePart?.inlineData?.data) {
-        generatedImageUrl = `data:${imagePart.inlineData.mimeType || 'image/png'};base64,${imagePart.inlineData.data}`;
-        providerName = 'Gemini Image';
-      }
-    } catch (geminiErr: any) {
-      console.info('Gemini image generation unavailable or quota limit reached, switching to free engine...');
-    }
-  }
-
-  // 3. Fallback to free image generation if Gemini image quota is 0 or unavailable
-  if (!generatedImageUrl) {
-    try {
-      if (hasHuggingFaceImageFallback()) {
-        const hf = await generateHuggingFaceImage(prompt.trim(), ratio, variation);
-        generatedImageUrl = hf.imageUrl;
-        providerName = 'Hugging Face';
-      } else {
-        const freeImg = await generateFreeImage(prompt.trim(), ratio, variation);
-        generatedImageUrl = freeImg.imageUrl;
-        providerName = 'Free AI Engine (Gemini Powered)';
-      }
-    } catch (fallbackErr: any) {
-      console.error('All image generation methods failed:', fallbackErr);
-      return res.status(502).json({
-        error: `Image generation failed: ${fallbackErr.message || 'Please check your connection and try again.'}`,
-      });
-    }
-  }
-
-  return res.json({
-    imageUrl: generatedImageUrl,
-    title: aiTitle,
-    keywords: aiKeywords,
-    seed: variation,
-    width,
-    height,
-    aspectRatio: ratio,
-    provider: providerName,
-  });
-});
-
-// API: Direct Keywords & Title Generator using Gemini 3.8 Flash
-router.post('/generate-keywords-title', async (req, res) => {
-  try {
-    const { prompt, designTitle, niche, imageDataUrl } = req.body || {};
-    if (!prompt && !imageDataUrl) {
-      return res.status(400).json({ error: 'Either prompt or imageDataUrl is required.' });
-    }
-
-    const metadata = await generateKeywordsAndTitle({
-      prompt: prompt || 'Phone case graphic artwork',
-      designTitle,
-      niche,
-      imageDataUrl,
-    });
-
-    return res.json(metadata);
-  } catch (error: any) {
-    console.error('Error in generate-keywords-title:', error);
-    return res.status(500).json({
-      error: error.message || 'Failed to generate keywords and title with Gemini.',
-    });
-  }
-});
-
-// API: Placeholder suggestions with Gemini 3.8 Flash and curated fallbacks
+// API: Placeholder suggestions with Gemini and curated fallbacks
 router.post('/suggest-values', async (req, res) => {
   try {
     const { placeholder, niche, currentPrompt } = req.body;
-    const ai = getGeminiClient();
+    const apiKey = process.env.GEMINI_API_KEY;
 
-    if (ai) {
-      const candidateModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
-      const promptContent = `You are a creative director for graphic illustration and print artwork.
+    if (apiKey && !apiKey.startsWith('your_')) {
+      try {
+        const promptContent = `You are a creative director for graphic illustration and print artwork.
 For the placeholder tag "${placeholder}" in the niche "${niche}" (context: "${currentPrompt || ''}"):
 Provide 6 vivid, creative, unique options to fill this placeholder.
 Return ONLY a valid JSON array of 6 short strings, for example: ["option 1", "option 2", "option 3", "option 4", "option 5", "option 6"]. Do not include any other markdown or commentary.`;
-
-      for (const modelName of candidateModels) {
-        try {
-          const response = await generateContentWithRetry(ai, {
-            model: modelName,
-            contents: promptContent,
-            config: { responseMimeType: 'application/json', temperature: 0.8 },
-          });
-
-          const parsed = JSON.parse((response.text || '[]').replace(/```json\s*|```/gi, '').trim());
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const cleanSuggestions = parsed
-              .map((item) => (typeof item === 'string' ? item : item.idea || item.title || JSON.stringify(item)))
-              .filter(Boolean)
-              .slice(0, 6);
-            if (cleanSuggestions.length > 0) {
-              return res.json({ suggestions: cleanSuggestions });
-            }
+        const ai = new GoogleGenAI({ apiKey });
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: promptContent,
+          config: { responseMimeType: 'application/json', temperature: 0.8 },
+        });
+        const parsed = JSON.parse((response.text || '[]').replace(/```json\s*|```/gi, '').trim());
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const cleanSuggestions = parsed
+            .map((item) => (typeof item === 'string' ? item : item.idea || item.title || JSON.stringify(item)))
+            .filter(Boolean)
+            .slice(0, 6);
+          if (cleanSuggestions.length > 0) {
+            return res.json({ suggestions: cleanSuggestions });
           }
-        } catch {
-          // Try next model candidate
         }
+      } catch (err) {
+        console.warn('Gemini suggestions failed; using curated fallback suggestions:', err);
       }
     }
 
@@ -279,50 +182,275 @@ Return ONLY a valid JSON array of 6 short strings, for example: ["option 1", "op
   }
 });
 
-// API: Full Etsy listing generation powered by Gemini 3.8 Flash
 router.post('/generate-etsy-listing', async (req, res) => {
-  const { prompt, imageDataUrl, designTitle, niche } = req.body || {};
-  const resolvedImageData = await resolveToDataUrl(imageDataUrl);
+  const { prompt, imageDataUrl, designTitle, niche } = req.body;
+  if (typeof prompt !== 'string' || !prompt.trim()) {
+    return res.status(400).json({ error: 'The original image-generation prompt is required.' });
+  }
+  if (
+    typeof imageDataUrl !== 'string' ||
+    !/^data:image\/(?:png|jpe?g|webp);base64,[A-Za-z0-9+/]+=*$/i.test(imageDataUrl)
+  ) {
+    return res.status(400).json({ error: 'A valid design image is required for visual analysis.' });
+  }
+  if (imageDataUrl.length > 20_000_000) {
+    return res.status(413).json({ error: 'The design image is too large to analyze.' });
+  }
 
+  const apiKey = process.env.GEMINI_API_KEY || '';
   try {
-    const meta = await generateKeywordsAndTitle({
-      prompt: (prompt || '').trim() || 'Phone case graphic artwork',
-      designTitle: typeof designTitle === 'string' ? designTitle : '',
-      niche: typeof niche === 'string' ? niche : '',
-      imageDataUrl: resolvedImageData,
-    });
+    if (!apiKey || apiKey.startsWith('your_')) {
+      return res.status(503).json({
+        error: 'Listing generation is not configured. Add GEMINI_API_KEY to .env and restart the app.',
+      });
+    }
 
+    const imageMatch = imageDataUrl.match(/^data:(image\/(?:png|jpe?g|webp));base64,(.+)$/i);
+    if (!imageMatch) {
+      return res.status(400).json({ error: 'The design image data could not be read.' });
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    const generationRequest = {
+      contents: {
+        parts: [
+          {
+            text: `You are an Etsy listing specialist. Analyze the attached artwork directly; the image is the source of truth and the generation prompt is secondary. Describe only motifs clearly visible in the image. Return a natural, specific phone-case title of at most 140 characters without subjective filler or keyword stuffing. Write a customer-ready description with a short introduction, visible design details, aesthetic, likely recipient/occasion, and cautious product/order information. Do not invent materials, protection, exact dimensions, compatibility, personalization, shipping, or production claims. Return only valid JSON with keys productTitle, productDescription, primaryKeywords, longTailKeywords, etsyTags, category, primaryColor, secondaryColor, designStyle, occasion, targetCustomer, searchIntent, and keywordRationale. Provide exactly 13 distinct, relevant Etsy tags using only letters, numbers, spaces, and hyphens; each must be at most 20 characters. Avoid repeated keywords and unrelated trends. Use arrays of concise strings for list fields. Ensure every claim matches the artwork and supplied context.\n\nCreate a complete Etsy listing for a phone case. Structure the description with a design-specific introduction, visible design and style, suitable recipient or gift occasion when supported, and brief ordering/product notes that avoid unverified claims. Do not claim exact phone compatibility, materials, protection, dimensions, or production details.\n\nDesign title: ${typeof designTitle === 'string' ? designTitle : ''}\nDesign category: ${typeof niche === 'string' ? niche : ''}\nOriginal image-generation prompt (secondary context):\n${prompt.trim()}`,
+          },
+          { inlineData: { mimeType: imageMatch[1], data: imageMatch[2] } },
+        ],
+      },
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            productTitle: { type: Type.STRING },
+            productDescription: { type: Type.STRING },
+            primaryKeywords: { type: Type.ARRAY, items: { type: Type.STRING } },
+            longTailKeywords: { type: Type.ARRAY, items: { type: Type.STRING } },
+            etsyTags: { type: Type.ARRAY, items: { type: Type.STRING }, minItems: '13', maxItems: '13' },
+            category: { type: Type.STRING },
+            primaryColor: { type: Type.STRING },
+            secondaryColor: { type: Type.STRING },
+            designStyle: { type: Type.ARRAY, items: { type: Type.STRING } },
+            occasion: { type: Type.STRING },
+            targetCustomer: { type: Type.ARRAY, items: { type: Type.STRING } },
+            searchIntent: { type: Type.ARRAY, items: { type: Type.STRING } },
+            keywordRationale: { type: Type.STRING },
+          },
+          required: [
+            'productTitle', 'productDescription', 'primaryKeywords', 'longTailKeywords', 'etsyTags',
+            'category', 'primaryColor', 'secondaryColor', 'designStyle', 'occasion',
+            'targetCustomer', 'searchIntent', 'keywordRationale',
+          ],
+        },
+        temperature: 0.4,
+      },
+    };
+
+    let response: Awaited<ReturnType<typeof ai.models.generateContent>> | undefined;
+    let parsed: Record<string, unknown> | undefined;
+    let generationError: unknown;
+    let gemmaImageFile: Awaited<ReturnType<typeof ai.files.upload>> | undefined;
+    const modelPlan = [
+      { name: 'gemma-4-26b-a4b-it', attempts: 2, usesGemmaImageInput: true, usesSchema: false },
+      { name: 'gemma-4-31b-it', attempts: 1, usesGemmaImageInput: true, usesSchema: false },
+      { name: 'gemini-3.8-flash', attempts: 1, usesGemmaImageInput: false, usesSchema: true },
+      { name: 'gemini-3.7-flash', attempts: 1, usesGemmaImageInput: false, usesSchema: true },
+    ] as const;
+    const parseListingJson = (text: unknown) => {
+      if (typeof text !== 'string' || !text.trim()) {
+        throw Object.assign(new Error('The AI returned an empty listing.'), { status: 502 });
+      }
+      const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+      const start = cleaned.indexOf('{');
+      const end = cleaned.lastIndexOf('}');
+      if (start < 0 || end < start) {
+        throw Object.assign(new Error('The AI returned an invalid listing object.'), { status: 502 });
+      }
+      let value: unknown;
+      try {
+        value = JSON.parse(cleaned.slice(start, end + 1));
+      } catch {
+        throw Object.assign(new Error('The AI returned invalid JSON for the listing.'), { status: 502 });
+      }
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw Object.assign(new Error('The AI returned an invalid listing object.'), { status: 502 });
+      }
+      return value as Record<string, unknown>;
+    };
+
+    try {
+      for (const [modelIndex, model] of modelPlan.entries()) {
+        for (let attempt = 0; attempt < model.attempts; attempt++) {
+          try {
+            if (model.usesGemmaImageInput) {
+              if (!gemmaImageFile) {
+                const imageBytes = new Uint8Array(Buffer.from(imageMatch[2], 'base64'));
+                gemmaImageFile = await ai.files.upload({
+                  file: new Blob([imageBytes], { type: imageMatch[1] }),
+                  config: { mimeType: imageMatch[1], displayName: 'craft-case-listing-artwork' },
+                });
+              }
+              if (!gemmaImageFile.uri) {
+                throw Object.assign(new Error('Google AI did not return the uploaded artwork file.'), { status: 502 });
+              }
+              response = await ai.models.generateContent({
+                model: model.name,
+                contents: {
+                  parts: [
+                    { text: generationRequest.contents.parts[0].text },
+                    { fileData: { fileUri: gemmaImageFile.uri, mimeType: gemmaImageFile.mimeType || imageMatch[1] } },
+                  ],
+                },
+                config: { temperature: 0.4 },
+              });
+            } else {
+              response = await ai.models.generateContent({ model: model.name, ...generationRequest });
+            }
+            parsed = parseListingJson(response.text);
+            break;
+          } catch (error) {
+            response = undefined;
+            parsed = undefined;
+            generationError = error;
+            const status = Number((error as { status?: number })?.status);
+            const isTemporaryFailure = [408, 429, 500, 502, 503, 504].includes(status);
+            const canTryNextModel = modelIndex < modelPlan.length - 1;
+            const isModelSpecificFailure = status >= 400 && status < 500 && status !== 401 && status !== 403 && status !== 429;
+            if (!(isTemporaryFailure || isModelSpecificFailure) || (!canTryNextModel && attempt === model.attempts - 1)) throw error;
+            if (attempt < model.attempts - 1) {
+              await new Promise((resolve) => setTimeout(resolve, 800 * (2 ** attempt)));
+            }
+          }
+        }
+        if (response && parsed) break;
+      }
+    } finally {
+      if (gemmaImageFile?.name) {
+        try {
+          await ai.files.delete({ name: gemmaImageFile.name });
+        } catch {
+          console.warn('Could not remove the temporary listing artwork file from Google AI.');
+        }
+      }
+    }
+    if (!response || !parsed) throw generationError || new Error('AI models did not return a listing.');
+    const parsedFields = Object.fromEntries(
+      Object.entries(parsed).map(([key, value]) => [key.replace(/[^a-z0-9]/gi, '').toLowerCase(), value])
+    );
+    const getText = (key: string, fallback = '') => {
+      const value = parsedFields[key.toLowerCase()];
+      return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+    };
+    const getOptionalText = (key: string) => {
+      const value = parsedFields[key.toLowerCase()];
+      return typeof value === 'string' ? value.trim() : '';
+    };
+    const getStringList = (key: string, limit: number, fallback: string[] = []) => {
+      const value = parsedFields[key.toLowerCase()];
+      if (!Array.isArray(value)) {
+        if (fallback.length > 0) return fallback.slice(0, limit);
+        return fallback;
+      }
+      const items = value
+        .filter((item) => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0 && (key !== 'etsyTags' || item.length <= 20))
+        .slice(0, limit);
+      return items.length > 0 ? items : fallback.slice(0, limit);
+    };
+
+    const titleSeed = [designTitle, niche, prompt].filter((part) => typeof part === 'string').join(' ');
+    const titleWords = titleSeed.toLowerCase().replace(/[^a-z0-9 -]/gi, ' ').split(/\s+/).filter((word) => word.length > 2);
+    const uniqueTitleWords = [...new Set(titleWords)];
+    const basePhrase = uniqueTitleWords.slice(0, 4).join(' ') || 'art phone case';
+    const primaryKeywords = getStringList('primaryKeywords', 12, [basePhrase, 'art phone case', 'illustrated phone case']);
+    const longTailKeywords = getStringList('longTailKeywords', 15, [`${basePhrase} phone case`, `${basePhrase} art gift`]);
+    const targetCustomer = getStringList('targetCustomer', 10, ['art and nature lovers', 'phone case collectors']);
+    const designStyle = getStringList('designStyle', 10, ['illustrated', 'decorative']);
+    const searchIntent = getStringList('searchIntent', 10, [
+      `Shoppers searching for "${primaryKeywords[0]}" want a case featuring the visible artwork.`,
+      `The long-tail phrase "${longTailKeywords[0]}" narrows the search to this design's specific subject and style.`,
+    ]);
+    const etsyTags: string[] = [];
+    const addEtsyTag = (tag: string) => {
+      const words = tag.replace(/[^a-z0-9 -]/gi, '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+      while (words.join(' ').length > 20) words.pop();
+      const normalizedTag = words.join(' ');
+      if (normalizedTag && !etsyTags.includes(normalizedTag)) {
+        etsyTags.push(normalizedTag);
+      }
+    };
+    [
+      ...getStringList('etsyTags', 30), ...primaryKeywords, ...longTailKeywords,
+      `${basePhrase} case`, `${basePhrase} art`, 'phone case gift', 'unique phone case',
+      'art lover gift', 'illustrated case', 'colorful phone case', 'nature art gift',
+      'decorative phone case', 'original artwork', 'gift for her', 'gift for him',
+    ].forEach(addEtsyTag);
+    uniqueTitleWords.forEach((word) => {
+      addEtsyTag(`${word} phone case`);
+      addEtsyTag(`${word} art gift`);
+    });
+    [
+      'woodland phone case', 'fox lover gift', 'stained glass art', 'sunburst artwork',
+      'nature lover gift', 'forest animal art', 'colorful case design', 'illustrated art',
+      'decorative phone case', 'unique art gift', 'original phone case', 'wildlife artwork',
+      'artistic phone case', 'gift for artists', 'creative phone case',
+    ].forEach(addEtsyTag);
+
+    const rationale = [parsedFields.keywordrationale, parsedFields.rationale, parsedFields.keywordstrategy]
+      .find((value) => typeof value === 'string' && value.trim());
+    const rawTitle = getText('productTitle', `${typeof designTitle === 'string' ? designTitle : 'Original Artwork'} Phone Case`);
+    const productTitle = rawTitle.length <= 140
+      ? rawTitle
+      : rawTitle.slice(0, 140).replace(/\s+\S*$/, '').trim();
     const listing = {
-      productTitle: meta.title,
-      title: meta.title,
-      shortDescription: meta.shortDescription,
-      productDescription: meta.description,
-      description: meta.description,
-      primaryKeywords: meta.primaryKeywords,
-      longTailKeywords: meta.longTailKeywords,
-      etsyTags: meta.tags,
-      tags: meta.tags,
-      relevantSearchTerms: meta.relevantSearchTerms,
-      suggestedAttributes: meta.suggestedAttributes,
-      relevantCategories: meta.relevantCategories,
-      personalizationSuggestions: meta.personalizationSuggestions,
-      seoRecommendations: meta.seoRecommendations,
-      extractedConcepts: meta.extractedConcepts,
-      category: meta.category,
-      primaryColor: meta.primaryColor,
-      secondaryColor: meta.secondaryColor,
-      occasion: meta.occasion,
-      targetCustomer: meta.targetCustomer,
-      designStyle: meta.designStyle,
-      searchIntent: meta.searchIntent,
-      keywordRationale: meta.keywordRationale,
+      productTitle,
+      productDescription: getText(
+        'productDescription',
+        `${typeof designTitle === 'string' ? designTitle : 'This original artwork'} brings a distinctive illustrated look to a phone case. The design features ${basePhrase}, with a decorative style suited to everyday use or gifting.`,
+      ),
+      primaryKeywords,
+      longTailKeywords,
+      etsyTags: etsyTags.slice(0, 13),
+      category: getOptionalText('category'),
+      primaryColor: getOptionalText('primaryColor'),
+      secondaryColor: getOptionalText('secondaryColor'),
+      occasion: getOptionalText('occasion'),
+      targetCustomer,
+      designStyle,
+      searchIntent,
+      keywordRationale:
+        typeof rationale === 'string'
+          ? rationale.trim()
+          : `"${primaryKeywords[0]}" targets the core design and product search, while "${longTailKeywords[0]}" narrows it to shoppers seeking this specific subject or style.`,
     };
 
     return res.json({ listing });
-  } catch (error: any) {
-    console.error('Error generating Etsy listing with Gemini:', error);
+  } catch (error) {
+    console.error('Error generating Etsy listing:', error);
+    const status = Number((error as { status?: number })?.status);
+    if (status === 401 || status === 403) {
+      return res.status(503).json({
+        error: 'Google AI rejected the API key. Check GEMINI_API_KEY in .env and restart the app.',
+      });
+    }
+    if (status === 429) {
+      return res.status(503).json({
+        error: 'The free AI model quota is temporarily unavailable. Check the Google AI Studio quota or try again later.',
+      });
+    }
+    if ([500, 503, 504].includes(status)) {
+      return res.status(503).json({
+        error: 'The free AI models are temporarily overloaded. Craft Case tried Gemma 4 and backup models; please retry shortly.',
+      });
+    }
+    const detail = error instanceof Error ? error.message : String(error);
+    const safeDetail = apiKey ? detail.replaceAll(apiKey, '[redacted API key]') : detail;
     return res.status(502).json({
-      error: `Gemini listing generation failed: ${error?.message || 'Please retry.'}`,
+      error: `AI listing generation failed: ${safeDetail}`,
     });
   }
 });

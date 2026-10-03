@@ -14,7 +14,6 @@ export interface EtsyListingDraft {
   productId: string;
   designName: string;
   title: string;
-  shortDescription?: string;
   description: string;
   tags: string[];
   category: string;
@@ -38,45 +37,7 @@ export interface EtsyListingDraft {
   publishedDate: string;
   primaryKeywords: string[];
   longTailKeywords: string[];
-  relevantSearchTerms?: string[];
   searchIntent: string[];
-  suggestedAttributes?: {
-    category?: string;
-    categoryPath?: string[];
-    primaryColor?: string;
-    secondaryColor?: string;
-    artStyle?: string;
-    theme?: string;
-    subject?: string;
-    recipient?: string;
-    occasion?: string;
-    finish?: string;
-    material?: string;
-    compatibleDevices?: string[];
-  };
-  relevantCategories?: string[];
-  personalizationSuggestions?: string[];
-  seoRecommendations?: {
-    primarySearchQuery?: string;
-    longTailStrategy?: string;
-    searchIntentSummary?: string;
-    conversionAdvice?: string;
-    keywordRationale?: string;
-  };
-  extractedConcepts?: {
-    subject?: string;
-    artStyle?: string;
-    theme?: string;
-    colors?: {
-      primary?: string;
-      secondary?: string;
-      palette?: string[];
-    };
-    mood?: string;
-    elements?: string[];
-    targetAudience?: string[];
-    giftOccasions?: string[];
-  };
   keywordRationale: string;
 }
 
@@ -163,7 +124,6 @@ export const createListingDraft = (
     productId,
     designName: existing?.designName || design.title,
     title: existing?.title || '',
-    shortDescription: existing?.shortDescription || '',
     description: existing?.description || '',
     tags: existing?.tags?.length === 13 ? [...existing.tags] : Array(13).fill(''),
     category: existing?.category || '',
@@ -187,13 +147,7 @@ export const createListingDraft = (
     publishedDate: existing?.publishedDate || '',
     primaryKeywords: existing?.primaryKeywords || [],
     longTailKeywords: existing?.longTailKeywords || [],
-    relevantSearchTerms: existing?.relevantSearchTerms || [],
     searchIntent: existing?.searchIntent || [],
-    suggestedAttributes: existing?.suggestedAttributes,
-    relevantCategories: existing?.relevantCategories || [],
-    personalizationSuggestions: existing?.personalizationSuggestions || [],
-    seoRecommendations: existing?.seoRecommendations,
-    extractedConcepts: existing?.extractedConcepts,
     keywordRationale: existing?.keywordRationale || '',
   };
 };
