@@ -9,12 +9,144 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { UnifiedProductRecord } from '../types/unifiedWorkflow';
-import { PinterestCsvRow } from '../types/pinterest';
+import { PinterestCsvRow, PINTEREST_CSV_HEADERS } from '../types/pinterest';
 
-const getFirebaseAuth = () => {
-  const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-  return getAuth(app);
+// Initialize Firebase App instance safely if configured
+const getSafeAuth = () => {
+  try {
+    if (firebaseConfig && (firebaseConfig as any).apiKey) {
+      const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+      return getAuth(app);
+    }
+  } catch (e) {
+    console.warn('Firebase auth initialization deferred:', e);
+  }
+  return null;
 };
+
+const auth = getSafeAuth();
+
+export const USER_PROVIDED_CLIENT_ID =
+  '458826575164-b6jhkrudbd0ribltergiuiafpb1vhjrr.apps.googleusercontent.com';
+
+export const PROVISIONED_OAUTH_CLIENT_ID =
+  (firebaseConfig.oAuthClientId &&
+   !firebaseConfig.oAuthClientId.includes('759990643229') &&
+   !firebaseConfig.oAuthClientId.includes('krudbd8') &&
+   !firebaseConfig.oAuthClientId.includes('krucbd0')
+    ? firebaseConfig.oAuthClientId
+    : USER_PROVIDED_CLIENT_ID);
+
+export const DEFAULT_GOOGLE_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID &&
+  !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('your-web-client-id') &&
+  !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('171360328307') &&
+  !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('759990643229') &&
+  !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('krudbd8') &&
+  !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('krucbd0')
+    ? import.meta.env.VITE_GOOGLE_CLIENT_ID
+    : USER_PROVIDED_CLIENT_ID;
+
+const GOOGLE_CLIENT_ID_STORAGE_KEY = 'casecraft_google_client_id';
+const GOOGLE_AUTH_STORAGE_KEY = 'casecraft_google_auth_session';
+
+export interface StoredGoogleSession {
+  token: string;
+  email: string;
+  savedAt: number;
+}
+
+export const getStoredGoogleSession = (): { token: string | null; email: string } => {
+  if (typeof window === 'undefined') return { token: null, email: '' };
+  try {
+    const raw = localStorage.getItem(GOOGLE_AUTH_STORAGE_KEY);
+    if (!raw) return { token: null, email: '' };
+    const parsed: StoredGoogleSession = JSON.parse(raw);
+    if (parsed.token && parsed.email) {
+      return { token: parsed.token, email: parsed.email };
+    }
+  } catch (e) {
+    console.warn('Could not read stored Google session:', e);
+  }
+  return { token: null, email: '' };
+};
+
+export const saveGoogleSession = (token: string, email: string): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(
+      GOOGLE_AUTH_STORAGE_KEY,
+      JSON.stringify({
+        token,
+        email,
+        savedAt: Date.now(),
+      })
+    );
+  } catch (e) {
+    console.warn('Could not store Google session:', e);
+  }
+};
+
+export const clearGoogleSession = (): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(GOOGLE_AUTH_STORAGE_KEY);
+  } catch (e) {
+    console.warn('Could not clear Google session:', e);
+  }
+};
+
+export const getStoredGoogleClientId = (): string => {
+  if (typeof window === 'undefined') return DEFAULT_GOOGLE_CLIENT_ID;
+  const stored = localStorage.getItem(GOOGLE_CLIENT_ID_STORAGE_KEY);
+  // Auto-clean any placeholder, old, or corrupted client IDs from browser local storage
+  if (
+    !stored ||
+    stored.includes('your-web-client-id') ||
+    stored.includes('171360328307') ||
+    stored.includes('759990643229') ||
+    stored.includes('krudbd8') ||
+    stored.includes('krucbd0') ||
+    stored.includes('[object')
+  ) {
+    localStorage.setItem(GOOGLE_CLIENT_ID_STORAGE_KEY, DEFAULT_GOOGLE_CLIENT_ID);
+    return DEFAULT_GOOGLE_CLIENT_ID;
+  }
+  return stored.trim();
+};
+
+export const setStoredGoogleClientId = (clientId: unknown): void => {
+  if (typeof window === 'undefined') return;
+  if (
+    typeof clientId !== 'string' ||
+    !clientId.trim() ||
+    clientId.includes('your-web-client-id') ||
+    clientId.includes('759990643229') ||
+    clientId.includes('krudbd8') ||
+    clientId.includes('krucbd0') ||
+    clientId.includes('[object')
+  ) {
+    localStorage.setItem(GOOGLE_CLIENT_ID_STORAGE_KEY, DEFAULT_GOOGLE_CLIENT_ID);
+  } else {
+    localStorage.setItem(GOOGLE_CLIENT_ID_STORAGE_KEY, clientId.trim());
+  }
+};
+
+export const GOOGLE_SCOPES_DEFAULT = [
+  'openid',
+  'email',
+  'profile',
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/spreadsheets',
+].join(' ');
+
+export const GOOGLE_SCOPES_RESTRICTED_FREE = [
+  'openid',
+  'email',
+  'profile',
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/spreadsheets',
+].join(' ');
 
 export const SHEET_HEADERS = [
   'Product_ID',
@@ -60,35 +192,6 @@ export const GOOGLE_SCOPES = [
   'email',
   'profile',
   'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/spreadsheets',
-].join(' ');
-
-export const DEFAULT_GOOGLE_CLIENT_ID = '171360328307-aqp8b3ko9t1sirdgeu670g4etetsntrm.apps.googleusercontent.com';
-
-export const getStoredGoogleClientId = (): string => {
-  if (typeof window === 'undefined') return DEFAULT_GOOGLE_CLIENT_ID;
-  return localStorage.getItem('casecraft_google_client_id') || DEFAULT_GOOGLE_CLIENT_ID;
-};
-
-export const setStoredGoogleClientId = (id: string): void => {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('casecraft_google_client_id', id);
-  }
-};
-
-export const GOOGLE_SCOPES_DEFAULT = [
-  'openid',
-  'email',
-  'profile',
-  'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/spreadsheets',
-].join(' ');
-
-export const GOOGLE_SCOPES_RESTRICTED_FREE = [
-  'openid',
-  'email',
-  'profile',
-  'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/spreadsheets',
 ].join(' ');
 
@@ -144,7 +247,18 @@ export interface DriveFileMetadata {
   size?: string;
   webViewLink?: string;
   webContentLink?: string;
+  thumbnailLink?: string;
   shared?: boolean;
+}
+
+export interface DriveImageFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  size?: string;
+  webViewLink?: string;
+  webContentLink?: string;
+  thumbnailLink?: string;
 }
 
 let identityScriptPromise: Promise<void> | undefined;
@@ -166,35 +280,52 @@ export const loadIdentityScript = (): Promise<void> => {
 };
 
 export const connectGoogleDriveAndSheets = async (
-  clientId: string
+  clientId?: unknown,
+  scope?: unknown
 ): Promise<{ token: string; email: string }> => {
-  // 1. Try Firebase Auth popup flow (recommended for AI Studio OAuth)
-  try {
-    const auth = getFirebaseAuth();
-    const provider = new GoogleAuthProvider();
-    provider.addScope('https://www.googleapis.com/auth/drive.file');
-    provider.addScope('https://www.googleapis.com/auth/spreadsheets');
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (credential?.accessToken) {
-      return {
-        token: credential.accessToken,
-        email: result.user?.email || 'Connected Google Account',
-      };
+  const sanitizedClientId =
+    typeof clientId === 'string' && clientId.trim() && !clientId.includes('[object')
+      ? clientId.trim()
+      : undefined;
+
+  const effectiveClientId =
+    sanitizedClientId ||
+    getStoredGoogleClientId() ||
+    DEFAULT_GOOGLE_CLIENT_ID;
+
+  // 1. First attempt Firebase Auth if provisioned with apiKey (handles authorized origins automatically)
+  if (
+    auth &&
+    (firebaseConfig as any)?.apiKey &&
+    (!sanitizedClientId || sanitizedClientId === DEFAULT_GOOGLE_CLIENT_ID || sanitizedClientId === PROVISIONED_OAUTH_CLIENT_ID)
+  ) {
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/drive');
+      provider.addScope('https://www.googleapis.com/auth/spreadsheets');
+      provider.setCustomParameters({ prompt: 'select_account' });
+
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        const token = credential.accessToken;
+        const email = result.user.email || 'Connected Google Account';
+        saveGoogleSession(token, email);
+        return {
+          token,
+          email,
+        };
+      }
+    } catch (fbErr: any) {
+      const msg = fbErr?.message || '';
+      if (msg.includes('popup-closed') || msg.includes('cancelled') || fbErr.code === 'auth/popup-closed-by-user') {
+        throw new Error('Sign-in prompt was closed.');
+      }
+      console.warn('Firebase Auth popup fell back to Google Identity Services:', fbErr);
     }
-  } catch (fbError: any) {
-    if (fbError?.code === 'auth/popup-closed-by-user' || fbError?.code === 'auth/cancelled-popup-request') {
-      throw new Error('Sign-in cancelled by user.');
-    }
-    console.warn('Firebase Auth popup error, falling back to GIS:', fbError);
   }
 
-  // 2. Fallback to Google Identity Services
-  const effectiveClientId =
-    clientId ||
-    firebaseConfig.oAuthClientId ||
-    '171360328307-aqp8b3ko9t1sirdgeu670g4etetsntrm.apps.googleusercontent.com';
-
+  // 2. Google Identity Services fallback for custom Client IDs
   if (!effectiveClientId) {
     throw new Error('Google Client ID is missing. Please set VITE_GOOGLE_CLIENT_ID or connect via OAuth.');
   }
@@ -202,18 +333,33 @@ export const connectGoogleDriveAndSheets = async (
   const oauth2 = window.google?.accounts?.oauth2;
   if (!oauth2) throw new Error('Google OAuth2 is unavailable in this browser session.');
 
+  const effectiveScope =
+    typeof scope === 'string' && scope.trim() ? scope.trim() : GOOGLE_SCOPES;
+
   const token = await new Promise<string>((resolve, reject) => {
     const client = oauth2.initTokenClient({
-      client_id: effectiveClientId,
-      scope: GOOGLE_SCOPES,
+      client_id: String(effectiveClientId).trim(),
+      scope: effectiveScope,
       callback: (response) => {
         if (response.error || !response.access_token) {
-          reject(new Error(response.error_description || response.error || 'Google authorization failed.'));
+          const errDesc = response.error_description || response.error || '';
+          if (errDesc.includes('closed') || response.error === 'popup_closed_by_user') {
+            reject(new Error('Sign-in prompt was closed.'));
+            return;
+          }
+          reject(new Error(errDesc || 'Google authorization failed.'));
           return;
         }
         resolve(response.access_token);
       },
-      error_callback: (error) => reject(new Error(error.message || 'Google authorization failed.')),
+      error_callback: (error) => {
+        const msg = error?.message || '';
+        if (msg.includes('closed') || msg.includes('Popup window closed')) {
+          reject(new Error('Sign-in prompt was closed.'));
+        } else {
+          reject(new Error(msg || 'Google authorization failed.'));
+        }
+      },
     });
     client.requestAccessToken({ prompt: 'select_account consent' });
   });
@@ -222,7 +368,9 @@ export const connectGoogleDriveAndSheets = async (
     'https://www.googleapis.com/oauth2/v3/userinfo',
     token
   );
-  return { token, email: user.email || 'Connected Google Account' };
+  const userEmail = user.email || 'Connected Google Account';
+  saveGoogleSession(token, userEmail);
+  return { token, email: userEmail };
 };
 
 export const googleRequest = async <T>(
@@ -488,6 +636,160 @@ export const verifyDriveFile = async (
 };
 
 /**
+ * Extract Google Drive ID and link type from folder URLs, file URLs, or raw IDs
+ */
+export const extractGoogleDriveId = (
+  input: string
+): { id: string; type: 'folder' | 'file' | 'unknown' } | null => {
+  if (!input || typeof input !== 'string') return null;
+  const str = input.trim();
+
+  // Folder regexes: drive.google.com/folderview?id={id}
+  const folderviewMatch = str.match(/drive\.google\.com\/folderview\?(?:.*&)?id=([a-zA-Z0-9_-]+)/i);
+  if (folderviewMatch) {
+    return { id: folderviewMatch[1], type: 'folder' };
+  }
+
+  // Folder regexes: drive.google.com/drive/folders/{id} or drive.google.com/drive/u/0/folders/{id}
+  const folderMatch = str.match(/drive\.google\.com\/(?:drive\/)?(?:u\/\d+\/)?(?:mobile\/)?folders\/([a-zA-Z0-9_-]+)/i);
+  if (folderMatch) {
+    return { id: folderMatch[1], type: 'folder' };
+  }
+
+  // File regexes: drive.google.com/file/d/{id}
+  const fileMatch = str.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/i);
+  if (fileMatch) {
+    return { id: fileMatch[1], type: 'file' };
+  }
+
+  // open?id={id}
+  const openIdMatch = str.match(/drive\.google\.com\/open\?(?:.*&)?id=([a-zA-Z0-9_-]+)/i);
+  if (openIdMatch) {
+    return { id: openIdMatch[1], type: 'unknown' };
+  }
+
+  // uc?id={id} or uc?export=download&id={id}
+  const ucIdMatch = str.match(/drive\.google\.com\/uc\?(?:.*&)?id=([a-zA-Z0-9_-]+)/i);
+  if (ucIdMatch) {
+    return { id: ucIdMatch[1], type: 'file' };
+  }
+
+  // Raw Google Drive ID (typically 25 to 45 alphanumeric chars)
+  if (/^[a-zA-Z0-9_-]{25,45}$/.test(str)) {
+    return { id: str, type: 'unknown' };
+  }
+
+  return null;
+};
+
+/**
+ * List all image files inside a Google Drive folder
+ */
+export const listDriveFolderImageFiles = async (
+  folderId: string,
+  token?: string | null
+): Promise<DriveImageFile[]> => {
+  const cleanFolderId = folderId.trim();
+
+  // 1. Try server proxy (handles both public and private with token)
+  try {
+    const res = await fetch('/api/drive/list-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderId: cleanFolderId, token: token || undefined }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const files: DriveImageFile[] = data.files || [];
+      const imageFiles = files.filter(
+        (f) =>
+          (f.mimeType && f.mimeType.startsWith('image/')) ||
+          /\.(png|jpe?g|webp|gif|svg)$/i.test(f.name)
+      );
+      if (imageFiles.length > 0 || files.length === 0) {
+        return imageFiles;
+      }
+    }
+  } catch (err) {
+    console.warn('Server proxy list-folder failed, trying direct Google API:', err);
+  }
+
+  // 2. Direct Google Drive API call if token is available
+  if (token) {
+    const query = `'${cleanFolderId}' in parents and trashed=false`;
+    const searchUrl = new URL('https://www.googleapis.com/drive/v3/files');
+    searchUrl.search = new URLSearchParams({
+      q: query,
+      fields: 'files(id, name, mimeType, size, webViewLink, webContentLink, thumbnailLink)',
+      pageSize: '100',
+    }).toString();
+
+    const data = await googleRequest<{ files?: DriveImageFile[] }>(searchUrl.toString(), token);
+    const files = data.files || [];
+    return files.filter(
+      (f) =>
+        (f.mimeType && f.mimeType.startsWith('image/')) ||
+        /\.(png|jpe?g|webp|gif|svg)$/i.test(f.name)
+    );
+  }
+
+  throw new Error(
+    'Unable to access Google Drive folder. Please ensure the folder is shared ("Anyone with the link can view") or connect your Google Drive account.'
+  );
+};
+
+/**
+ * Download a Google Drive file and convert it into a base64 DataURL
+ */
+export const fetchDriveImageAsDataUrl = async (
+  fileId: string,
+  token?: string | null
+): Promise<{ dataUrl: string; mimeType: string; fileName: string }> => {
+  const cleanId = fileId.trim();
+
+  // 1. Try server proxy first (avoids browser CORS)
+  try {
+    const res = await fetch('/api/drive/download-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileId: cleanId, token: token || undefined }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.dataUrl) {
+        return {
+          dataUrl: data.dataUrl,
+          mimeType: data.mimeType || 'image/png',
+          fileName: data.fileName || 'drive_artwork.png',
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Server proxy download failed, trying direct fetch:', err);
+  }
+
+  // 2. Direct fetch with token
+  if (token) {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${cleanId}?alt=media`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const blob = await res.blob();
+      const mimeType = blob.type || 'image/png';
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Failed to encode image data.'));
+        reader.readAsDataURL(blob);
+      });
+      return { dataUrl, mimeType, fileName: 'drive_artwork.png' };
+    }
+  }
+
+  throw new Error(`Failed to download design image from Google Drive (File ID: ${cleanId}).`);
+};
+
+/**
  * List available Spreadsheets
  */
 export const listSpreadsheets = async (
@@ -666,8 +968,8 @@ export const productRecordToSheetRow = (
     mockupSlots[5].id,
     mockupSlots[5].url,
     record.product.sku || record.productId,
-    record.product.price || 24.99,
-    record.printify.blueprintId || '',
+    record.product.price || 22.20,
+    record.printify.blueprintId || '269',
     record.printify.printProviderId || '',
     record.printify.variantIds.join(','),
     status,
@@ -725,126 +1027,182 @@ function columnToLetter(column: number): string {
   return letter;
 }
 
-export const extractSpreadsheetId = (url: string): string | null => {
-  if (!url) return null;
-  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  return match ? match[1] : (url.trim().length > 10 ? url.trim() : null);
+/**
+ * Extract clean Google Spreadsheet ID from either a raw ID or full Google Sheets URL
+ */
+export const extractSpreadsheetId = (input: string): string => {
+  if (!input) return '';
+  const trimmed = input.trim();
+  const urlMatch = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (urlMatch && urlMatch[1]) {
+    return urlMatch[1];
+  }
+  if (/^[a-zA-Z0-9-_]{15,}$/.test(trimmed)) {
+    return trimmed;
+  }
+  return trimmed;
 };
 
+/**
+ * Get spreadsheet details and worksheets list
+ */
 export const getSpreadsheetInfo = async (
   token: string,
   spreadsheetId: string
 ): Promise<{ id: string; title: string; sheets: GoogleWorksheetRef[] }> => {
+  const cleanId = extractSpreadsheetId(spreadsheetId);
   const data = await googleRequest<{
-    properties?: { title: string };
+    spreadsheetId?: string;
+    properties?: { title?: string };
     sheets?: { properties?: { sheetId: number; title: string; index: number } }[];
   }>(
-    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}?fields=properties.title,sheets.properties(sheetId,title,index)`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(cleanId)}?fields=spreadsheetId,properties.title,sheets.properties`,
     token
   );
-  const sheets = (data.sheets || [])
+  const sheets: GoogleWorksheetRef[] = (data.sheets || [])
     .map((s) => s.properties)
     .filter((p): p is { sheetId: number; title: string; index: number } => Boolean(p?.title))
     .map((p) => ({ id: p.sheetId, title: p.title, index: p.index }));
+
   return {
-    id: spreadsheetId,
-    title: data.properties?.title || 'Untitled Spreadsheet',
+    id: data.spreadsheetId || cleanId,
+    title: data.properties?.title || 'Google Spreadsheet',
     sheets,
   };
 };
 
+/**
+ * Create a new dedicated Google Spreadsheet formatted for Pinterest Bulk Pin CSV uploads
+ */
 export const createPinterestSpreadsheet = async (
   token: string,
-  title: string
-): Promise<{ id: string; title: string; worksheetTitle: string; url: string }> => {
-  const res = await googleRequest<{ spreadsheetId: string; properties?: { title: string } }>(
+  title = 'Pinterest Bulk Pins'
+): Promise<{ id: string; title: string; url: string; worksheetTitle: string }> => {
+  const worksheetTitle = 'Pins';
+  const body = {
+    properties: { title },
+    sheets: [
+      {
+        properties: {
+          title: worksheetTitle,
+          gridProperties: {
+            rowCount: 100,
+            columnCount: PINTEREST_CSV_HEADERS.length,
+            frozenRowCount: 1,
+          },
+        },
+        data: [
+          {
+            startRow: 0,
+            startColumn: 0,
+            rowData: [
+              {
+                values: PINTEREST_CSV_HEADERS.map((header) => ({
+                  userEnteredValue: { stringValue: header },
+                  userEnteredFormat: {
+                    textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } },
+                    backgroundColor: { red: 0.89, green: 0.05, blue: 0.22 }, // Pinterest Red #E60023
+                    horizontalAlignment: 'CENTER',
+                  },
+                })),
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const res = await googleRequest<{ spreadsheetId: string; spreadsheetUrl?: string }>(
     'https://sheets.googleapis.com/v4/spreadsheets',
     token,
     {
       method: 'POST',
-      body: JSON.stringify({
-        properties: { title },
-        sheets: [{ properties: { title: 'Pins' } }],
-      }),
+      body: JSON.stringify(body),
     }
   );
-  const id = res.spreadsheetId;
-  const worksheetTitle = 'Pins';
-  // Write headers
-  const headers = ['Title', 'Media URL', 'Pinterest board', 'Thumbnail', 'Description', 'Link', 'Publish date', 'Keywords'];
-  const range = encodeURIComponent(`'Pins'!A1:H1`);
-  await googleRequest(
-    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}/values/${range}?valueInputOption=RAW`,
-    token,
-    {
-      method: 'PUT',
-      body: JSON.stringify({ values: [headers] }),
-    }
-  );
+
   return {
-    id,
-    title: res.properties?.title || title,
+    id: res.spreadsheetId,
+    title,
+    url: res.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${res.spreadsheetId}/edit`,
     worksheetTitle,
-    url: `https://docs.google.com/spreadsheets/d/${id}/edit`,
   };
 };
 
+/**
+ * Ensure Pinterest header row exists in the targeted worksheet
+ */
+export const ensurePinterestSheetHeaders = async (
+  token: string,
+  spreadsheetId: string,
+  sheetName: string
+): Promise<void> => {
+  const cleanId = extractSpreadsheetId(spreadsheetId);
+  const maxCol = columnToLetter(PINTEREST_CSV_HEADERS.length);
+  const range = sheetRange(sheetName, `A1:${maxCol}1`);
+  const data = await googleRequest<{ values?: string[][] }>(valuesUrl(cleanId, range), token).catch(() => ({ values: [] }));
+  const current = data.values?.[0] || [];
+
+  if (current.length === 0 || current.every((v) => !v)) {
+    await googleRequest(`${valuesUrl(cleanId, range)}?valueInputOption=RAW`, token, {
+      method: 'PUT',
+      body: JSON.stringify({ values: [PINTEREST_CSV_HEADERS] }),
+    });
+  }
+};
+
+/**
+ * Export Pinterest rows to a Google Spreadsheet worksheet
+ */
 export const exportPinterestPinsToSpreadsheet = async (
   token: string,
   spreadsheetId: string,
   sheetName: string,
   rows: PinterestCsvRow[],
-  mode: 'append' | 'overwrite'
+  mode: 'append' | 'overwrite' = 'append'
 ): Promise<{ count: number; spreadsheetUrl: string }> => {
-  // Ensure worksheet exists or headers are there
-  const headers = ['Title', 'Media URL', 'Pinterest board', 'Thumbnail', 'Description', 'Link', 'Publish date', 'Keywords'];
-  try {
-    // Try writing headers just in case
-    const headerRange = encodeURIComponent(`'${sheetName}'!A1:H1`);
-    await googleRequest(
-      `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${headerRange}?valueInputOption=RAW`,
-      token,
-      {
-        method: 'PUT',
-        body: JSON.stringify({ values: [headers] }),
-      }
-    );
-  } catch (err) {
-    console.warn('Headers setup warning:', err);
-  }
+  const cleanId = extractSpreadsheetId(spreadsheetId);
+  await ensurePinterestSheetHeaders(token, cleanId, sheetName);
 
   const values = rows.map((r) => [
+    r['Product ID'] || '',
     r.Title || '',
+    r.Description || '',
     r['Media URL'] || '',
     r['Pinterest board'] || '',
     r.Thumbnail || '',
-    r.Description || '',
     r.Link || '',
     r['Publish date'] || '',
     r.Keywords || '',
   ]);
 
-  if (mode === 'overwrite') {
-    const clearRange = encodeURIComponent(`'${sheetName}'!A2:H1000`);
-    await googleRequest(
-      `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${clearRange}:clear`,
-      token,
-      { method: 'POST' }
-    );
+  const maxCol = columnToLetter(PINTEREST_CSV_HEADERS.length);
 
-    const writeRange = encodeURIComponent(`'${sheetName}'!A2:H${values.length + 1}`);
-    await googleRequest(
-      `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${writeRange}?valueInputOption=RAW`,
-      token,
-      {
+  if (mode === 'overwrite') {
+    // Clear data rows starting at row 2
+    try {
+      await googleRequest(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(cleanId)}/values/${sheetRange(sheetName, `A2:${maxCol}1000`)}:clear`,
+        token,
+        { method: 'POST', body: '{}' }
+      );
+    } catch (clearErr) {
+      console.warn('Could not clear old rows before overwrite:', clearErr);
+    }
+
+    if (values.length > 0) {
+      const writeRange = sheetRange(sheetName, `A2:${maxCol}${values.length + 1}`);
+      await googleRequest(`${valuesUrl(cleanId, writeRange)}?valueInputOption=RAW`, token, {
         method: 'PUT',
         body: JSON.stringify({ values }),
-      }
-    );
+      });
+    }
   } else {
-    const appendRange = encodeURIComponent(`'${sheetName}'!A:H`);
+    // Append rows
+    const appendRange = sheetRange(sheetName, `A:${maxCol}`);
     await googleRequest(
-      `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${appendRange}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      `${valuesUrl(cleanId, appendRange)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
       token,
       {
         method: 'POST',
@@ -855,51 +1213,61 @@ export const exportPinterestPinsToSpreadsheet = async (
 
   return {
     count: rows.length,
-    spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+    spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${cleanId}/edit`,
   };
 };
 
+/**
+ * Read Pinterest pins from Google Spreadsheet
+ */
 export const readPinterestPinsFromSpreadsheet = async (
   token: string,
   spreadsheetId: string,
   sheetName: string
 ): Promise<PinterestCsvRow[]> => {
-  const range = encodeURIComponent(`'${sheetName}'!A1:H1000`);
-  const data = await googleRequest<{ values?: string[][] }>(
-    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${range}`,
-    token
-  );
-  const rows = data.values || [];
-  if (rows.length < 2) return [];
+  const cleanId = extractSpreadsheetId(spreadsheetId);
+  const maxCol = columnToLetter(PINTEREST_CSV_HEADERS.length);
+  const range = sheetRange(sheetName, `A1:${maxCol}500`);
+  const data = await googleRequest<{ values?: string[][] }>(valuesUrl(cleanId, range), token);
+  const rawValues = data.values || [];
 
-  const rawHeaders = rows[0].map((h) => h.trim());
-  const normalizedHeaders = rawHeaders.map((h) => h.toLowerCase());
+  if (rawValues.length <= 1) return [];
 
-  // Map indices
-  const titleIdx = normalizedHeaders.indexOf('title');
-  const mediaUrlIdx = normalizedHeaders.indexOf('media url');
-  const boardIdx = normalizedHeaders.indexOf('pinterest board');
-  const thumbIdx = normalizedHeaders.indexOf('thumbnail');
-  const descIdx = normalizedHeaders.indexOf('description');
-  const linkIdx = normalizedHeaders.indexOf('link');
-  const dateIdx = normalizedHeaders.indexOf('publish date');
-  const kwIdx = normalizedHeaders.indexOf('keywords');
+  const headerRow = rawValues[0].map((h) => (h || '').trim());
+  
+  const getIdx = (targetHeader: string, fallbackIdx: number) => {
+    const idx = headerRow.findIndex(
+      (h) => h.toLowerCase() === targetHeader.toLowerCase()
+    );
+    return idx >= 0 ? idx : fallbackIdx;
+  };
 
-  const pins: PinterestCsvRow[] = [];
-  for (let i = 1; i < rows.length; i++) {
-    const vals = rows[i];
-    if (vals.length === 0 || vals.every((v) => !v)) continue;
+  const prodIdIdx = getIdx('Product ID', 0);
+  const titleIdx = getIdx('Title', 1);
+  const descIdx = getIdx('Description', 2);
+  const mediaIdx = getIdx('Media URL', 3);
+  const boardIdx = getIdx('Pinterest board', 4);
+  const thumbIdx = getIdx('Thumbnail', 5);
+  const linkIdx = getIdx('Link', 6);
+  const dateIdx = getIdx('Publish date', 7);
+  const keywIdx = getIdx('Keywords', 8);
 
-    pins.push({
-      Title: titleIdx !== -1 ? vals[titleIdx] || '' : '',
-      'Media URL': mediaUrlIdx !== -1 ? vals[mediaUrlIdx] || '' : '',
-      'Pinterest board': boardIdx !== -1 ? vals[boardIdx] || '' : '',
-      Thumbnail: thumbIdx !== -1 ? vals[thumbIdx] || '' : '',
-      Description: descIdx !== -1 ? vals[descIdx] || '' : '',
-      Link: linkIdx !== -1 ? vals[linkIdx] || '' : '',
-      'Publish date': dateIdx !== -1 ? vals[dateIdx] || '' : '',
-      Keywords: kwIdx !== -1 ? vals[kwIdx] || '' : '',
+  const rows: PinterestCsvRow[] = [];
+  for (let i = 1; i < rawValues.length; i++) {
+    const r = rawValues[i];
+    if (!r || r.length === 0 || r.every((cell) => !cell || !cell.trim())) continue;
+    rows.push({
+      'Product ID': r[prodIdIdx] || '',
+      Title: r[titleIdx] || '',
+      Description: r[descIdx] || '',
+      'Media URL': r[mediaIdx] || '',
+      'Pinterest board': r[boardIdx] || '',
+      Thumbnail: r[thumbIdx] || '',
+      Link: r[linkIdx] || '',
+      'Publish date': r[dateIdx] || '',
+      Keywords: r[keywIdx] || '',
     });
   }
-  return pins;
+
+  return rows;
 };

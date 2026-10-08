@@ -53,7 +53,7 @@ export const PHONE_MODELS = [
 ] as const;
 
 export const DEFAULT_LISTING_SETTINGS: ListingSettings = {
-  defaultPrice: '24.99',
+  defaultPrice: '22.20',
   blueprintId: '',
   printProviderId: '',
   variantIds: Object.fromEntries(PHONE_MODELS.map((model) => [model, ''])),

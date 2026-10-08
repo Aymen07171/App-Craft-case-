@@ -27,11 +27,24 @@ import {
   Cloud,
   CheckSquare,
   Link2,
+  Wand2,
+  Sliders,
+  RotateCcw,
+  TrendingUp,
+  Zap,
+  BarChart2,
+  ShieldCheck,
+  CheckCheck,
+  X,
 } from 'lucide-react';
 import {
   PinterestCsvRow,
   PINTEREST_CSV_HEADERS,
   PinterestGenerationOptions,
+  PinterestAiAnalysis,
+  PinterestAiOptimizeResultItem,
+  PinterestAiOptimizeRequest,
+  PinterestAiOptimizeItem,
 } from '../types/pinterest';
 import { UnifiedProductRecord } from '../types/unifiedWorkflow';
 import {
@@ -40,6 +53,9 @@ import {
   mapProductToPinterestPins,
   downloadCsvFile,
   SAMPLE_PINTEREST_CSV_ROWS,
+  optimizePinterestPinsWithAi,
+  localSummarizeDescription,
+  localOptimizeTitle,
 } from '../services/pinterestCsvService';
 import {
   listSpreadsheets,
@@ -62,6 +78,13 @@ interface PinterestCsvWorkspaceProps {
   onOpenGoogleSettings?: () => void;
 }
 
+interface RowMetadata {
+  isAiOptimized?: boolean;
+  originalTitle?: string;
+  originalDescription?: string;
+  analysis?: PinterestAiAnalysis;
+}
+
 export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
   product,
   workflowProducts,
@@ -71,24 +94,53 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
   onOpenGoogleSettings,
 }) => {
   // Current active rows in workspace
-  const [rows, setRows] = useState<PinterestCsvRow[]>(SAMPLE_PINTEREST_CSV_ROWS);
+  const [rows, setRows] = useState<PinterestCsvRow[]>([]);
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [rawCsvText, setRawCsvText] = useState<string>('');
   const [showRawPreview, setShowRawPreview] = useState<boolean>(false);
   const [copiedCsv, setCopiedCsv] = useState<boolean>(false);
 
   // Auto-generation options
-  const [boardName, setBoardName] = useState<string>('Aesthetic Tech & Accessories');
-  const [destinationLink, setDestinationLink] = useState<string>('https://myshop.example.com/products/case');
+  const [boardName, setBoardName] = useState<string>('Phone Cases');
+  const [destinationLink, setDestinationLink] = useState<string>(
+    'https://www.etsy.com/shop/CraftCasesStudio?ref=seller-platform-mcnav'
+  );
   const [includeDesign, setIncludeDesign] = useState<boolean>(true);
   const [includePrimaryMockup, setIncludePrimaryMockup] = useState<boolean>(true);
   const [includeAllMockups, setIncludeAllMockups] = useState<boolean>(false);
-  const [titleFormat, setTitleFormat] = useState<'product-title' | 'title-with-callout' | 'seo-focused'>('title-with-callout');
+  const [titleFormat, setTitleFormat] = useState<'product-title' | 'title-with-callout' | 'seo-focused'>('product-title');
   const [utmCampaign, setUtmCampaign] = useState<string>('phone_cases_q4');
   const [scheduleIntervalDays, setScheduleIntervalDays] = useState<number>(1);
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [autoAiOptimizeOnPopulate, setAutoAiOptimizeOnPopulate] = useState<boolean>(true);
+
+  // AI Optimization Settings & State
+  const [isAiOptimizing, setIsAiOptimizing] = useState<boolean>(false);
+  const [isSinglePinOptimizing, setIsSinglePinOptimizing] = useState<boolean>(false);
+  const [aiProgress, setAiProgress] = useState<{ current: number; total: number; stage: string }>({
+    current: 0,
+    total: 0,
+    stage: '',
+  });
+  const [aiOptions, setAiOptions] = useState<{
+    maxDescriptionLength: number; // strictly max 700
+    maxTitleLength: number;
+    titleStyle: 'concise' | 'seo' | 'aesthetic' | 'punchy';
+    tone: 'viral' | 'luxury' | 'modern' | 'minimalist';
+  }>({
+    maxDescriptionLength: 700,
+    maxTitleLength: 80,
+    titleStyle: 'concise',
+    tone: 'viral',
+  });
+  const [showAiSettingsModal, setShowAiSettingsModal] = useState<boolean>(false);
+  const [showAiDiffModal, setShowAiDiffModal] = useState<boolean>(false);
+  const [aiDiffResults, setAiDiffResults] = useState<PinterestAiOptimizeResultItem[]>([]);
+  const [selectedDiffIndices, setSelectedDiffIndices] = useState<Set<number>>(new Set());
+  const [rowMetadata, setRowMetadata] = useState<Record<number, RowMetadata>>({});
 
   // Selected row for detail drawer/modal
-  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(0);
+  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -103,12 +155,14 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
     let descWarnings = 0;
     let missingMedia = 0;
     let missingBoard = 0;
+    let aiOptimizedCount = 0;
 
-    rows.forEach((row) => {
+    rows.forEach((row, idx) => {
       if (!row.Title || row.Title.length > 100) titleWarnings++;
-      if (row.Description && row.Description.length > 500) descWarnings++;
+      if (row.Description && row.Description.length > 700) descWarnings++;
       if (!row['Media URL']) missingMedia++;
       if (!row['Pinterest board']) missingBoard++;
+      if (rowMetadata[idx]?.isAiOptimized) aiOptimizedCount++;
     });
 
     return {
@@ -117,9 +171,10 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
       descWarnings,
       missingMedia,
       missingBoard,
+      aiOptimizedCount,
       isValid: missingMedia === 0 && missingBoard === 0,
     };
-  }, [rows]);
+  }, [rows, rowMetadata]);
 
   // Handle uploading existing CSV
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,6 +193,7 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
           return;
         }
         setRows(res.rows);
+        setRowMetadata({});
         setSuccessMessage(`Successfully imported ${res.rows.length} Pinterest pins from ${file.name}!`);
         if (res.warnings.length > 0) {
           setUploadError(`Imported with warnings: ${res.warnings.slice(0, 3).join('; ')}`);
@@ -151,7 +207,7 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
   };
 
   // Populate from current product
-  const handleAutoPopulateFromProduct = (targetProduct?: UnifiedProductRecord) => {
+  const handleAutoPopulateFromProduct = async (targetProduct?: UnifiedProductRecord) => {
     const prod = targetProduct || product;
     if (!prod) {
       setUploadError('No product selected to populate pins from.');
@@ -170,6 +226,7 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
       utmCampaign,
       startDate,
       scheduleIntervalDays,
+      aiMaxDescriptionChars: aiOptions.maxDescriptionLength,
     };
 
     const generated = mapProductToPinterestPins(prod, options);
@@ -178,12 +235,73 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
       return;
     }
 
-    setRows((prev) => [...generated, ...prev]);
-    setSuccessMessage(`Generated ${generated.length} Pinterest pin rows for ${prod.productId} (${prod.designName})!`);
+    // If auto AI optimization is enabled, run Gemini batch optimization on generated pins
+    if (autoAiOptimizeOnPopulate) {
+      setIsAiOptimizing(true);
+      setAiProgress({ current: 0, total: generated.length, stage: 'AI optimizing generated pin titles & descriptions...' });
+      try {
+        const itemsToOptimize: PinterestAiOptimizeItem[] = generated.map((pin, i) => ({
+          id: String(i),
+          title: pin.Title,
+          description: pin.Description,
+          board: pin['Pinterest board'],
+          keywords: pin.Keywords,
+          productId: pin['Product ID'],
+        }));
+
+        const aiResponse = await optimizePinterestPinsWithAi(itemsToOptimize, {
+          maxDescriptionLength: aiOptions.maxDescriptionLength,
+          maxTitleLength: aiOptions.maxTitleLength,
+          titleStyle: aiOptions.titleStyle,
+          tone: aiOptions.tone,
+        });
+
+        const newMetadata: Record<number, RowMetadata> = {};
+        const optimizedGenerated = generated.map((pin, i) => {
+          const aiItem = aiResponse.results[i];
+          if (aiItem) {
+            newMetadata[i] = {
+              isAiOptimized: true,
+              originalTitle: pin.Title,
+              originalDescription: pin.Description,
+              analysis: aiItem.analysis,
+            };
+            return {
+              ...pin,
+              Title: aiItem.optimizedTitle,
+              Description: aiItem.summarizedDescription,
+            };
+          }
+          return pin;
+        });
+
+        setRows((prev) => [...optimizedGenerated, ...prev]);
+        setRowMetadata((prev) => {
+          const shifted: Record<number, RowMetadata> = {};
+          const offset = optimizedGenerated.length;
+          Object.entries(prev).forEach(([k, v]) => {
+            shifted[Number(k) + offset] = v;
+          });
+          return { ...newMetadata, ...shifted };
+        });
+
+        setSuccessMessage(
+          `Generated and AI-optimized ${generated.length} Pinterest pins for ${prod.productId} (${prod.designName})!`
+        );
+      } catch (err: any) {
+        setRows((prev) => [...generated, ...prev]);
+        setSuccessMessage(`Generated ${generated.length} Pinterest pins (Local format applied).`);
+      } finally {
+        setIsAiOptimizing(false);
+      }
+    } else {
+      setRows((prev) => [...generated, ...prev]);
+      setSuccessMessage(`Generated ${generated.length} Pinterest pin rows for ${prod.productId} (${prod.designName})!`);
+    }
   };
 
   // Populate batch from all workflows
-  const handlePopulateAllWorkflows = () => {
+  const handlePopulateAllWorkflows = async () => {
     if (!workflowProducts) return;
     const allGenerated: PinterestCsvRow[] = [];
 
@@ -200,6 +318,7 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
         utmCampaign,
         startDate,
         scheduleIntervalDays,
+        aiMaxDescriptionChars: aiOptions.maxDescriptionLength,
       };
       const pins = mapProductToPinterestPins(prod, options);
       allGenerated.push(...pins);
@@ -211,14 +330,200 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
     }
   };
 
+  // Batch AI Optimize selected or all pins
+  const handleBatchAiOptimize = async (targetIndices?: number[]) => {
+    const indicesToProcess =
+      targetIndices && targetIndices.length > 0
+        ? targetIndices
+        : selectedIndices.size > 0
+        ? Array.from(selectedIndices)
+        : rows.map((_, i) => i);
+
+    if (indicesToProcess.length === 0) {
+      setUploadError('No pin rows available to optimize.');
+      return;
+    }
+
+    setIsAiOptimizing(true);
+    setUploadError(null);
+    setSuccessMessage(null);
+    setAiProgress({ current: 0, total: indicesToProcess.length, stage: 'Preparing pin records for Gemini analysis...' });
+
+    try {
+      const itemsToOptimize: PinterestAiOptimizeItem[] = indicesToProcess.map((idx) => {
+        const r = rows[idx];
+        return {
+          id: String(idx),
+          title: r.Title,
+          description: r.Description,
+          board: r['Pinterest board'],
+          keywords: r.Keywords,
+          productId: r['Product ID'],
+        };
+      });
+
+      setAiProgress({
+        current: 1,
+        total: indicesToProcess.length,
+        stage: 'Gemini 3.8 is analyzing context, summarizing descriptions (<= 700 chars), and optimizing titles...',
+      });
+
+      const batchSize = 10;
+      const allResults: PinterestAiOptimizeResultItem[] = [];
+
+      for (let i = 0; i < itemsToOptimize.length; i += batchSize) {
+        const slice = itemsToOptimize.slice(i, i + batchSize);
+        setAiProgress({
+          current: Math.min(i + slice.length, itemsToOptimize.length),
+          total: itemsToOptimize.length,
+          stage: `Optimizing pins ${i + 1}-${Math.min(i + slice.length, itemsToOptimize.length)} of ${itemsToOptimize.length}...`,
+        });
+
+        const response = await optimizePinterestPinsWithAi(slice, {
+          maxDescriptionLength: aiOptions.maxDescriptionLength,
+          maxTitleLength: aiOptions.maxTitleLength,
+          titleStyle: aiOptions.titleStyle,
+          tone: aiOptions.tone,
+        });
+
+        allResults.push(...response.results);
+      }
+
+      setAiDiffResults(allResults);
+      setSelectedDiffIndices(new Set(allResults.map((_, i) => i)));
+      setShowAiDiffModal(true);
+      setSuccessMessage(`AI analysis complete for ${allResults.length} pins! Review and apply changes.`);
+    } catch (err: any) {
+      setUploadError(`AI optimization failed: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsAiOptimizing(false);
+    }
+  };
+
+  // Apply AI Diff Results to Workspace
+  const handleApplyAiDiffResults = () => {
+    if (aiDiffResults.length === 0) return;
+
+    const updatedRows = [...rows];
+    const updatedMeta = { ...rowMetadata };
+    let appliedCount = 0;
+
+    aiDiffResults.forEach((diff, diffIdx) => {
+      if (!selectedDiffIndices.has(diffIdx)) return;
+      const rowIndex = Number(diff.id);
+      if (rowIndex >= 0 && rowIndex < updatedRows.length) {
+        const prev = updatedRows[rowIndex];
+        updatedMeta[rowIndex] = {
+          isAiOptimized: true,
+          originalTitle: prev.Title,
+          originalDescription: prev.Description,
+          analysis: diff.analysis,
+        };
+        updatedRows[rowIndex] = {
+          ...prev,
+          Title: diff.optimizedTitle,
+          Description: diff.summarizedDescription,
+        };
+        appliedCount++;
+      }
+    });
+
+    setRows(updatedRows);
+    setRowMetadata(updatedMeta);
+    setShowAiDiffModal(false);
+    setSuccessMessage(`Applied AI optimization to ${appliedCount} Pinterest pins!`);
+  };
+
+  // Single Pin AI Optimize from Inspector
+  const handleSinglePinAiOptimize = async (mode: 'full' | 'title-only' | 'desc-only') => {
+    if (activeRowIndex === null || !rows[activeRowIndex]) return;
+    const r = rows[activeRowIndex];
+    setIsSinglePinOptimizing(true);
+    setUploadError(null);
+
+    try {
+      const item: PinterestAiOptimizeItem = {
+        id: String(activeRowIndex),
+        title: r.Title,
+        description: r.Description,
+        board: r['Pinterest board'],
+        keywords: r.Keywords,
+        productId: r['Product ID'],
+      };
+
+      const response = await optimizePinterestPinsWithAi([item], {
+        maxDescriptionLength: aiOptions.maxDescriptionLength,
+        maxTitleLength: aiOptions.maxTitleLength,
+        titleStyle: aiOptions.titleStyle,
+        tone: aiOptions.tone,
+      });
+
+      if (response.results.length > 0) {
+        const result = response.results[0];
+        const updatedRows = [...rows];
+        const prevTitle = r.Title;
+        const prevDesc = r.Description;
+
+        if (mode === 'full' || mode === 'title-only') {
+          updatedRows[activeRowIndex].Title = result.optimizedTitle;
+        }
+        if (mode === 'full' || mode === 'desc-only') {
+          updatedRows[activeRowIndex].Description = result.summarizedDescription;
+        }
+
+        setRows(updatedRows);
+        setRowMetadata((prev) => {
+          const currentMeta = prev[activeRowIndex];
+          return {
+            ...prev,
+            [activeRowIndex]: {
+              isAiOptimized: true,
+              originalTitle: currentMeta?.originalTitle || prevTitle,
+              originalDescription: currentMeta?.originalDescription || prevDesc,
+              analysis: result.analysis,
+            },
+          };
+        });
+
+        setSuccessMessage(
+          `AI optimized Pin #${activeRowIndex + 1}! (${result.summarizedDescription.length} chars description, ${result.optimizedTitle.length} chars title)`
+        );
+      }
+    } catch (err: any) {
+      setUploadError(`Single pin AI optimization failed: ${err.message}`);
+    } finally {
+      setIsSinglePinOptimizing(false);
+    }
+  };
+
+  // Revert single pin to original
+  const handleRevertPin = (index: number) => {
+    const meta = rowMetadata[index];
+    if (!meta || (!meta.originalTitle && !meta.originalDescription)) return;
+
+    const updated = [...rows];
+    if (meta.originalTitle) updated[index].Title = meta.originalTitle;
+    if (meta.originalDescription) updated[index].Description = meta.originalDescription;
+    setRows(updated);
+
+    setRowMetadata((prev) => {
+      const next = { ...prev };
+      delete next[index];
+      return next;
+    });
+
+    setSuccessMessage(`Reverted Pin #${index + 1} to original values.`);
+  };
+
   // Add empty custom row
   const handleAddRow = () => {
     const newRow: PinterestCsvRow = {
+      'Product ID': product?.productId || 'CASE-00001',
       Title: 'New Aesthetic Phone Case Pin Title',
+      Description: 'Discover this unique artistic phone case. Sleek, dual-layer tough protection with vivid wrap art.',
       'Media URL': product?.mockups?.[0]?.localUrl || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=800',
       'Pinterest board': boardName,
       Thumbnail: '',
-      Description: 'Discover this unique artistic phone case. Sleek, dual-layer tough protection with vivid wrap art.',
       Link: destinationLink,
       'Publish date': startDate,
       Keywords: 'aesthetic phone case, tough iphone case, gift for her',
@@ -227,11 +532,62 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
     setActiveRowIndex(0);
   };
 
-  // Remove row
+  // Multi-select toggle row
+  const handleToggleSelectRow = (index: number) => {
+    setSelectedIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+
+  // Select all / Deselect all
+  const handleToggleSelectAll = () => {
+    if (selectedIndices.size === rows.length && rows.length > 0) {
+      setSelectedIndices(new Set());
+    } else {
+      setSelectedIndices(new Set(rows.map((_, i) => i)));
+    }
+  };
+
+  // Delete all selected rows
+  const handleDeleteSelected = () => {
+    if (selectedIndices.size === 0) return;
+    const remaining = rows.filter((_, idx) => !selectedIndices.has(idx));
+    setRows(remaining);
+    setSelectedIndices(new Set());
+    setActiveRowIndex(remaining.length > 0 ? 0 : null);
+    setSuccessMessage(`Deleted ${selectedIndices.size} selected pin record${selectedIndices.size === 1 ? '' : 's'}.`);
+  };
+
+  // Clear all rows
+  const handleClearAll = () => {
+    if (rows.length === 0) return;
+    const count = rows.length;
+    setRows([]);
+    setSelectedIndices(new Set());
+    setActiveRowIndex(null);
+    setRowMetadata({});
+    setSuccessMessage(`Cleared all ${count} pin records.`);
+  };
+
+  // Remove single row
   const handleDeleteRow = (index: number) => {
     setRows(rows.filter((_, i) => i !== index));
+    setSelectedIndices((prev) => {
+      const next = new Set<number>();
+      prev.forEach((i) => {
+        if (i < index) next.add(i);
+        else if (i > index) next.add(i - 1);
+      });
+      return next;
+    });
     if (activeRowIndex === index) {
-      setActiveRowIndex(null);
+      setActiveRowIndex(rows.length > 1 ? 0 : null);
     } else if (activeRowIndex !== null && activeRowIndex > index) {
       setActiveRowIndex(activeRowIndex - 1);
     }
@@ -260,9 +616,10 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
     downloadCsvFile(currentSerializedCsv, filename);
   };
 
-  // Reset to user's sample template
+  // Reset to sample template
   const handleResetSample = () => {
     setRows(SAMPLE_PINTEREST_CSV_ROWS);
+    setRowMetadata({});
     setSuccessMessage('Loaded Pinterest sample template.');
   };
 
@@ -477,6 +834,7 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
         return;
       }
       setRows(imported);
+      setRowMetadata({});
       setActiveRowIndex(0);
       setSheetSuccessMessage(`Successfully imported ${imported.length} Pinterest pins from Google Sheet [${targetWorksheet}]!`);
     } catch (err: any) {
@@ -487,6 +845,7 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
   };
 
   const activeRow = activeRowIndex !== null ? rows[activeRowIndex] : null;
+  const activeRowMeta = activeRowIndex !== null ? rowMetadata[activeRowIndex] : null;
 
   return (
     <div className="space-y-6">
@@ -505,9 +864,13 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
                 <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-rose-300">
                   Step 1: CSV Handler
                 </span>
+                <span className="flex items-center gap-1 rounded-full border border-purple-500/40 bg-purple-950/50 px-2.5 py-0.5 text-[11px] font-semibold text-purple-300 shadow-sm">
+                  <Sparkles className="h-3 w-3 text-purple-400" />
+                  <span>AI Powered</span>
+                </span>
               </div>
               <p className="text-xs text-slate-400">
-                Generate, edit, and validate RFC-4180 bulk creation CSV files directly formatted for Pinterest's uploader.
+                Generate, edit, and validate RFC-4180 bulk creation CSV files with Gemini-powered title optimization and description summarization (max 700 chars).
               </p>
             </div>
           </div>
@@ -599,23 +962,110 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
             <p className="mt-0.5 text-xl font-bold text-white">{rows.length}</p>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-            <span className="text-[10px] font-semibold uppercase text-slate-400">Target Board</span>
-            <p className="mt-0.5 text-xs font-medium text-rose-300 truncate" title={boardName}>{boardName}</p>
+            <span className="text-[10px] font-semibold uppercase text-purple-400 flex items-center gap-1">
+              <Sparkles className="h-3 w-3" />
+              <span>AI Optimized</span>
+            </span>
+            <p className="mt-0.5 text-xl font-bold text-purple-300">
+              {validationSummary.aiOptimizedCount} <span className="text-xs font-normal text-slate-500">/ {rows.length}</span>
+            </p>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-            <span className="text-[10px] font-semibold uppercase text-slate-400">Specification</span>
-            <p className="mt-0.5 text-xs font-medium text-emerald-400">8 Pinterest Headers ✓</p>
+            <span className="text-[10px] font-semibold uppercase text-slate-400">Description Rule</span>
+            <p className="mt-0.5 text-xs font-semibold text-emerald-400">Max 700 chars compliant</p>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
             <span className="text-[10px] font-semibold uppercase text-slate-400">Format Health</span>
-            <p className={`mt-0.5 text-xs font-semibold ${validationSummary.isValid ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {validationSummary.isValid ? '100% Valid' : 'Missing required fields'}
+            <p className={`mt-0.5 text-xs font-semibold ${validationSummary.isValid && validationSummary.descWarnings === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {validationSummary.descWarnings > 0
+                ? `${validationSummary.descWarnings} pins exceed 700 chars`
+                : validationSummary.isValid
+                ? '100% Valid & Formatted'
+                : 'Missing required fields'}
             </p>
           </div>
         </div>
 
+        {/* AI Bulk Optimization Feature Bar */}
+        <div className="mt-5 rounded-xl border border-purple-500/30 bg-gradient-to-r from-purple-950/50 via-slate-900 to-indigo-950/50 p-4 shadow-lg space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-600/30 border border-purple-500/40 text-purple-300">
+                <Wand2 className="h-4 w-4 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-purple-200">
+                    AI Pinterest Copy &amp; Summarization Engine
+                  </h3>
+                  <span className="rounded bg-purple-500/20 text-[10px] font-mono font-medium text-purple-300 px-1.5 py-0.5 border border-purple-500/30">
+                    Gemini 3.8 Flash
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Automatically summarize long descriptions to &lt;= 700 characters, optimize titles for high search CTR, and evaluate contextual coherence.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAiSettingsModal(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/90 hover:bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition cursor-pointer"
+              >
+                <Sliders className="h-3.5 w-3.5 text-purple-400" />
+                <span>AI Tuning ({aiOptions.maxDescriptionLength}ch / {aiOptions.titleStyle})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleBatchAiOptimize()}
+                disabled={isAiOptimizing || rows.length === 0}
+                className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 px-4 py-1.5 text-xs font-bold text-white transition shadow-md shadow-purple-950 cursor-pointer"
+              >
+                {isAiOptimizing ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
+                <span>
+                  {isAiOptimizing
+                    ? 'AI Analyzing & Optimizing...'
+                    : selectedIndices.size > 0
+                    ? `AI Optimize Selected (${selectedIndices.size} Pins)`
+                    : `AI Optimize All (${rows.length} Pins)`}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* AI Progress Bar if active */}
+          {isAiOptimizing && (
+            <div className="rounded-lg border border-purple-500/30 bg-slate-950/80 p-3 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-purple-300 flex items-center gap-1.5">
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-purple-400" />
+                  <span>{aiProgress.stage}</span>
+                </span>
+                <span className="font-mono text-purple-400 font-bold">
+                  {aiProgress.current} / {aiProgress.total} Pins
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300 rounded-full"
+                  style={{
+                    width: `${aiProgress.total > 0 ? (aiProgress.current / aiProgress.total) * 100 : 30}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Auto-populate Generator Controls */}
-        <div className="mt-6 rounded-xl border border-slate-800 bg-slate-950/80 p-4 space-y-4">
+        <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/80 p-4 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-rose-400" />
@@ -623,13 +1073,22 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
                 Automated Pin Population Settings
               </h3>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-1.5 text-xs text-purple-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoAiOptimizeOnPopulate}
+                  onChange={(e) => setAutoAiOptimizeOnPopulate(e.target.checked)}
+                  className="rounded border-slate-700 bg-slate-900 accent-purple-500"
+                />
+                <span className="font-medium">Auto-apply AI summarization (max 700 chars) on generate</span>
+              </label>
               <button
                 type="button"
                 onClick={handleResetSample}
                 className="text-[11px] text-slate-400 hover:text-white underline cursor-pointer"
               >
-                Load Pinterest Sample Rows
+                Load Sample Rows
               </button>
             </div>
           </div>
@@ -670,9 +1129,9 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
                 onChange={(e) => setTitleFormat(e.target.value as any)}
                 className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-white focus:border-rose-500 focus:outline-none"
               >
+                <option value="product-title">Direct Product / Design Title</option>
                 <option value="title-with-callout">On Device Callout ("On Device • Model | Title")</option>
                 <option value="seo-focused">SEO Focused ("Niche • Title")</option>
-                <option value="product-title">Direct Product Title</option>
               </select>
             </div>
 
@@ -728,7 +1187,8 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
             <button
               type="button"
               onClick={() => handleAutoPopulateFromProduct()}
-              className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 px-4 py-2 text-xs font-semibold text-white transition shadow-md shadow-rose-950 cursor-pointer"
+              disabled={isAiOptimizing}
+              className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 disabled:opacity-50 px-4 py-2 text-xs font-semibold text-white transition shadow-md shadow-rose-950 cursor-pointer"
             >
               <Sparkles className="h-3.5 w-3.5" />
               <span>Auto-Populate Pins from Current Product ({product?.productId || 'Active'})</span>
@@ -738,7 +1198,8 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
               <button
                 type="button"
                 onClick={handlePopulateAllWorkflows}
-                className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-200 transition cursor-pointer"
+                disabled={isAiOptimizing}
+                className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 px-4 py-2 text-xs font-semibold text-slate-200 transition cursor-pointer"
               >
                 <Layers className="h-3.5 w-3.5 text-indigo-400" />
                 <span>Batch Populate from All Active Workflows</span>
@@ -807,37 +1268,6 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
             )}
           </div>
         </div>
-
-        {/* Notifications */}
-        {sheetErrorMessage && (
-          <div className="flex items-start gap-2.5 rounded-lg border border-rose-800/60 bg-rose-950/40 p-3 text-xs text-rose-200">
-            <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
-            <div className="space-y-1">
-              <p className="font-semibold text-rose-300">Google Sheets Sync Error</p>
-              <p>{sheetErrorMessage}</p>
-            </div>
-          </div>
-        )}
-
-        {sheetSuccessMessage && (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-800/60 bg-emerald-950/40 p-3 text-xs text-emerald-200">
-            <div className="flex items-center gap-2.5">
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
-              <p>{sheetSuccessMessage}</p>
-            </div>
-            {activeSheetUrl && (
-              <a
-                href={activeSheetUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 font-semibold text-emerald-400 hover:text-emerald-300 hover:underline shrink-0"
-              >
-                <span>Open in Google Sheets</span>
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
-            )}
-          </div>
-        )}
 
         {/* Spreadsheet Selector & URL Connect Section */}
         <div className="grid gap-4 md:grid-cols-2">
@@ -1031,23 +1461,63 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Main Table & Editor */}
+      {/* Main Table & Editor Grid */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left: Interactive Data Grid (2 cols) */}
         <div className="lg:col-span-2 space-y-4">
           <div className="rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-800 p-4">
-              <div className="flex items-center gap-2">
-                <FileSpreadsheet className="h-4 w-4 text-rose-400" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                  CSV Pin Records ({rows.length})
-                </h3>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <FileSpreadsheet className="h-4 w-4 text-rose-400" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                    CSV Pin Records ({rows.length})
+                  </h3>
+                </div>
+                {rows.length > 0 && (
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    {selectedIndices.size > 0 ? `(${selectedIndices.size} selected)` : ''}
+                  </span>
+                )}
               </div>
-              <div className="flex items-center gap-2 text-xs">
+
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                {selectedIndices.size > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleBatchAiOptimize()}
+                      disabled={isAiOptimizing}
+                      className="flex items-center gap-1.5 rounded-lg bg-purple-600/90 hover:bg-purple-500 text-white px-2.5 py-1 text-[11px] font-semibold transition cursor-pointer shadow-sm shadow-purple-950"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      <span>AI Optimize ({selectedIndices.size})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteSelected}
+                      className="flex items-center gap-1.5 rounded-lg bg-rose-600/90 hover:bg-rose-500 text-white px-2.5 py-1 text-[11px] font-semibold transition cursor-pointer shadow-sm shadow-rose-950"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      <span>Delete ({selectedIndices.size})</span>
+                    </button>
+                  </>
+                )}
+
+                {rows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAll}
+                    className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1 text-[11px] font-medium text-slate-400 hover:text-rose-300 hover:border-rose-800/50 transition cursor-pointer"
+                  >
+                    Clear All
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setShowRawPreview(!showRawPreview)}
-                  className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:text-white"
+                  className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:text-white transition cursor-pointer"
                 >
                   {showRawPreview ? 'Show Visual Table' : 'Show Raw CSV Text'}
                 </button>
@@ -1058,34 +1528,95 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
               <div className="p-4 bg-slate-950 font-mono text-xs text-slate-300 overflow-x-auto max-h-[500px]">
                 <pre className="select-all">{currentSerializedCsv}</pre>
               </div>
+            ) : rows.length === 0 ? (
+              <div className="p-12 text-center space-y-3">
+                <div className="mx-auto h-12 w-12 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-500">
+                  <FileSpreadsheet className="h-6 w-6 text-slate-600" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-white">No Pinterest Pins in Workspace</h4>
+                  <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                    Generate pins from your current design &amp; mockups above, import a CSV, or add custom pins manually.
+                  </p>
+                </div>
+                <div className="pt-2 flex flex-wrap items-center justify-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => handleAutoPopulateFromProduct()}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-md shadow-rose-950 transition cursor-pointer"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>Generate Pins from Active Product</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddRow}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Add Single Pin</span>
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
                 <table className="w-full text-left text-xs text-slate-300 border-collapse">
                   <thead className="sticky top-0 z-10 bg-slate-950 border-b border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     <tr>
-                      <th className="py-2.5 px-3">#</th>
+                      <th className="py-2.5 px-3 w-8">
+                        <input
+                          type="checkbox"
+                          checked={selectedIndices.size === rows.length && rows.length > 0}
+                          onChange={handleToggleSelectAll}
+                          title="Select all / Deselect all"
+                          className="h-3.5 w-3.5 rounded border-slate-700 bg-slate-900 accent-rose-500 cursor-pointer"
+                        />
+                      </th>
+                      <th className="py-2.5 px-2">#</th>
+                      <th className="py-2.5 px-3">Product ID</th>
                       <th className="py-2.5 px-3">Media</th>
                       <th className="py-2.5 px-3">Title</th>
+                      <th className="py-2.5 px-3">Description (Max 700ch)</th>
+                      <th className="py-2.5 px-3">AI Quality</th>
                       <th className="py-2.5 px-3">Board</th>
-                      <th className="py-2.5 px-3">Keywords</th>
                       <th className="py-2.5 px-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
                     {rows.map((row, idx) => {
                       const isSelected = activeRowIndex === idx;
+                      const isChecked = selectedIndices.has(idx);
+                      const meta = rowMetadata[idx];
+                      const isDescTooLong = row.Description && row.Description.length > 700;
+                      const isTitleTooLong = row.Title && row.Title.length > 100;
+
                       return (
                         <tr
                           key={idx}
                           onClick={() => setActiveRowIndex(idx)}
                           className={`cursor-pointer transition ${
-                            isSelected
-                              ? 'bg-rose-950/30 text-white'
+                            isChecked
+                              ? 'bg-rose-950/40 text-white'
+                              : isSelected
+                              ? 'bg-rose-950/20 text-white'
                               : 'hover:bg-slate-800/40 text-slate-300'
                           }`}
                         >
-                          <td className="py-2.5 px-3 font-mono text-[10px] text-slate-500">
+                          <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleToggleSelectRow(idx)}
+                              className="h-3.5 w-3.5 rounded border-slate-700 bg-slate-900 accent-rose-500 cursor-pointer"
+                            />
+                          </td>
+                          <td className="py-2.5 px-2 font-mono text-[10px] text-slate-500">
                             {idx + 1}
+                          </td>
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            <span className="font-mono text-[11px] font-semibold text-indigo-300 bg-indigo-950/60 border border-indigo-800/50 px-2 py-0.5 rounded">
+                              {row['Product ID'] || product?.productId || 'CASE-00001'}
+                            </span>
                           </td>
                           <td className="py-2.5 px-3">
                             {row['Media URL'] ? (
@@ -1103,22 +1634,56 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
                               <span className="text-[10px] text-rose-400">No Image</span>
                             )}
                           </td>
-                          <td className="py-2.5 px-3 max-w-[200px]">
+                          <td className="py-2.5 px-3 max-w-[170px]">
                             <p className="font-semibold text-white truncate" title={row.Title}>
                               {row.Title || <span className="text-slate-500 italic">Untitled</span>}
                             </p>
-                            <span className="text-[10px] text-slate-400 font-mono">
+                            <span className={`text-[10px] font-mono ${isTitleTooLong ? 'text-amber-400 font-bold' : 'text-slate-400'}`}>
                               {row.Title.length}/100 chars
                             </span>
                           </td>
-                          <td className="py-2.5 px-3">
-                            <span className="rounded bg-slate-950 border border-slate-800 px-2 py-0.5 text-[10px] text-slate-300 truncate max-w-[120px] block">
-                              {row['Pinterest board']}
-                            </span>
+                          <td className="py-2.5 px-3 max-w-[220px]">
+                            <p className="text-[11px] text-slate-300 line-clamp-2" title={row.Description}>
+                              {row.Description || <span className="text-amber-400/80 italic">No description</span>}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span
+                                className={`text-[10px] font-mono ${
+                                  isDescTooLong
+                                    ? 'text-rose-400 font-bold bg-rose-950/50 px-1 rounded border border-rose-800'
+                                    : 'text-emerald-400'
+                                }`}
+                              >
+                                {row.Description.length}/700 chars
+                              </span>
+                              {isDescTooLong && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveRowIndex(idx);
+                                    handleSinglePinAiOptimize('desc-only');
+                                  }}
+                                  className="text-[9px] text-purple-300 hover:text-purple-200 underline cursor-pointer"
+                                >
+                                  ✨ Summarize
+                                </button>
+                              )}
+                            </div>
                           </td>
-                          <td className="py-2.5 px-3 max-w-[160px]">
-                            <span className="truncate block text-[11px] text-slate-400" title={row.Keywords}>
-                              {row.Keywords || '-'}
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            {meta?.isAiOptimized ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-purple-950/70 border border-purple-500/40 px-2 py-0.5 text-[10px] font-semibold text-purple-300">
+                                <Sparkles className="h-2.5 w-2.5 text-purple-400" />
+                                <span>{meta.analysis?.coherenceScore || 96}% Coherence</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-500">Standard</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="rounded bg-slate-950 border border-slate-800 px-2 py-0.5 text-[10px] text-slate-300 truncate max-w-[110px] block">
+                              {row['Pinterest board']}
                             </span>
                           </td>
                           <td className="py-2.5 px-3 text-right">
@@ -1129,7 +1694,7 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
                                 handleDeleteRow(idx);
                               }}
                               title="Delete Pin Row"
-                              className="rounded p-1 text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
+                              className="rounded p-1 text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -1148,18 +1713,25 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
         <div className="space-y-4">
           <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                Pin Inspector {activeRowIndex !== null ? `(#${activeRowIndex + 1})` : ''}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                  Pin Inspector {activeRowIndex !== null ? `(#${activeRowIndex + 1})` : ''}
+                </h3>
+                {activeRowMeta?.isAiOptimized && (
+                  <span className="rounded-full bg-purple-500/20 text-[10px] font-semibold text-purple-300 px-2 py-0.5 border border-purple-500/30">
+                    AI Enhanced ✓
+                  </span>
+                )}
+              </div>
               {activeRow && (
-                <span className="text-[11px] text-rose-300 font-mono">
+                <span className="text-[11px] text-rose-300 font-mono truncate max-w-[120px]">
                   {activeRow['Pinterest board']}
                 </span>
               )}
             </div>
 
             {activeRow ? (
-              <div className="space-y-3.5 text-xs">
+              <div className="space-y-4 text-xs">
                 {/* Media Image Preview */}
                 {activeRow['Media URL'] && (
                   <div className="rounded-xl border border-slate-800 bg-slate-950 p-2 flex items-center gap-3">
@@ -1168,7 +1740,7 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
                       alt="Pin Asset"
                       className="h-16 w-12 rounded object-cover border border-slate-700"
                     />
-                    <div className="overflow-hidden space-y-1">
+                    <div className="overflow-hidden space-y-1 flex-1">
                       <p className="text-[10px] font-semibold text-slate-400 uppercase">Image Asset URL:</p>
                       <a
                         href={activeRow['Media URL']}
@@ -1181,6 +1753,174 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* AI Pin Coherence & Actions Box */}
+                <div className="rounded-xl border border-purple-500/30 bg-purple-950/30 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+                      <span className="font-bold text-purple-200 text-xs">AI Copy Refinement</span>
+                    </div>
+                    {activeRowMeta?.isAiOptimized && activeRowMeta.originalTitle && (
+                      <button
+                        type="button"
+                        onClick={() => handleRevertPin(activeRowIndex!)}
+                        className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-rose-300 cursor-pointer"
+                        title="Revert back to pre-AI values"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        <span>Revert</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Character Limits Progress Meters */}
+                  <div className="space-y-2 pt-1">
+                    <div>
+                      <div className="flex justify-between text-[11px] mb-1">
+                        <span className="text-slate-400">Description Length (Max 700):</span>
+                        <span
+                          className={`font-mono font-semibold ${
+                            activeRow.Description.length > 700 ? 'text-rose-400' : 'text-emerald-400'
+                          }`}
+                        >
+                          {activeRow.Description.length} / 700 chars
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            activeRow.Description.length > 700
+                              ? 'bg-rose-500'
+                              : activeRow.Description.length > 550
+                              ? 'bg-amber-400'
+                              : 'bg-emerald-500'
+                          }`}
+                          style={{
+                            width: `${Math.min((activeRow.Description.length / 700) * 100, 100)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[11px] mb-1">
+                        <span className="text-slate-400">Title Length (Recommended &le; 80):</span>
+                        <span
+                          className={`font-mono font-semibold ${
+                            activeRow.Title.length > 100 ? 'text-rose-400' : 'text-indigo-300'
+                          }`}
+                        >
+                          {activeRow.Title.length} / 100 chars
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            activeRow.Title.length > 100
+                              ? 'bg-rose-500'
+                              : activeRow.Title.length > 80
+                              ? 'bg-amber-400'
+                              : 'bg-indigo-500'
+                          }`}
+                          style={{
+                            width: `${Math.min((activeRow.Title.length / 100) * 100, 100)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* AI Quick Actions */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleSinglePinAiOptimize('desc-only')}
+                      disabled={isSinglePinOptimizing}
+                      className="flex items-center justify-center gap-1 rounded-lg border border-purple-500/40 bg-purple-900/40 hover:bg-purple-800/50 text-purple-200 py-1.5 text-[11px] font-semibold transition disabled:opacity-50 cursor-pointer"
+                    >
+                      {isSinglePinOptimizing ? (
+                        <RefreshCw className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3 w-3" />
+                      )}
+                      <span>Summarize &le; 700ch</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSinglePinAiOptimize('title-only')}
+                      disabled={isSinglePinOptimizing}
+                      className="flex items-center justify-center gap-1 rounded-lg border border-indigo-500/40 bg-indigo-900/40 hover:bg-indigo-800/50 text-indigo-200 py-1.5 text-[11px] font-semibold transition disabled:opacity-50 cursor-pointer"
+                    >
+                      {isSinglePinOptimizing ? (
+                        <RefreshCw className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Wand2 className="h-3 w-3" />
+                      )}
+                      <span>Optimize Title</span>
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSinglePinAiOptimize('full')}
+                    disabled={isSinglePinOptimizing}
+                    className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white py-1.5 text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
+                  >
+                    {isSinglePinOptimizing ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Zap className="h-3.5 w-3.5" />
+                    )}
+                    <span>Full AI Context Analysis &amp; Polish</span>
+                  </button>
+
+                  {/* AI Analysis Card Details */}
+                  {activeRowMeta?.analysis && (
+                    <div className="rounded-lg bg-slate-950/80 border border-purple-500/20 p-2.5 space-y-1.5 mt-2">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-400">Contextual Coherence:</span>
+                        <span className="font-bold text-emerald-400 font-mono">
+                          {activeRowMeta.analysis.coherenceScore}%
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-400">Keyword Relevance:</span>
+                        <span className="font-bold text-purple-300 font-mono">
+                          {activeRowMeta.analysis.relevanceScore}%
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-300 italic pt-1 border-t border-slate-800">
+                        "{activeRowMeta.analysis.summaryNote}"
+                      </p>
+                      {activeRowMeta.analysis.extractedHooks && activeRowMeta.analysis.extractedHooks.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {activeRowMeta.analysis.extractedHooks.map((h, i) => (
+                            <span
+                              key={i}
+                              className="rounded bg-purple-950/80 text-[9px] text-purple-300 px-1.5 py-0.5 border border-purple-800/40"
+                            >
+                              #{h}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Edit Product ID */}
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">Product ID</label>
+                  <input
+                    type="text"
+                    value={activeRow['Product ID'] || ''}
+                    onChange={(e) => handleUpdateRowField(activeRowIndex!, 'Product ID', e.target.value)}
+                    placeholder="e.g. CASE-00001"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-white focus:border-rose-500 focus:outline-none font-mono"
+                  />
+                </div>
 
                 {/* Edit Title */}
                 <div>
@@ -1195,6 +1935,22 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
                     value={activeRow.Title}
                     onChange={(e) => handleUpdateRowField(activeRowIndex!, 'Title', e.target.value)}
                     className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-white focus:border-rose-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Edit Description */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-semibold text-slate-300">Description (Max 700 chars)</label>
+                    <span className={`text-[10px] font-mono ${activeRow.Description.length > 700 ? 'text-rose-400 font-bold' : 'text-slate-400'}`}>
+                      {activeRow.Description.length}/700 chars
+                    </span>
+                  </div>
+                  <textarea
+                    rows={4}
+                    value={activeRow.Description}
+                    onChange={(e) => handleUpdateRowField(activeRowIndex!, 'Description', e.target.value)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-rose-500 focus:outline-none"
                   />
                 </div>
 
@@ -1217,22 +1973,6 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
                     value={activeRow['Pinterest board']}
                     onChange={(e) => handleUpdateRowField(activeRowIndex!, 'Pinterest board', e.target.value)}
                     className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-white focus:border-rose-500 focus:outline-none"
-                  />
-                </div>
-
-                {/* Edit Description */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] font-semibold text-slate-300">Description</label>
-                    <span className={`text-[10px] font-mono ${activeRow.Description.length > 500 ? 'text-rose-400 font-bold' : 'text-slate-500'}`}>
-                      {activeRow.Description.length}/500 chars
-                    </span>
-                  </div>
-                  <textarea
-                    rows={4}
-                    value={activeRow.Description}
-                    onChange={(e) => handleUpdateRowField(activeRowIndex!, 'Description', e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-rose-500 focus:outline-none"
                   />
                 </div>
 
@@ -1274,13 +2014,288 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="py-12 text-center text-xs text-slate-500">
-                Select a pin row from the table to inspect and edit details.
+              <div className="py-12 text-center text-xs text-slate-500 space-y-2">
+                <FileText className="h-8 w-8 mx-auto text-slate-600" />
+                <p>Select a pin row from the table to inspect, edit, or run AI optimization.</p>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* AI Settings Tuning Modal */}
+      {showAiSettingsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl border border-purple-500/30 bg-slate-900 p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Sliders className="h-5 w-5 text-purple-400" />
+                <h3 className="text-sm font-bold text-white">AI Copy Tuning Settings</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAiSettingsModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Max Description Length Slider */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between">
+                  <label className="font-semibold text-slate-300">Max Description Length</label>
+                  <span className="font-mono font-bold text-purple-400">
+                    {aiOptions.maxDescriptionLength} characters
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="200"
+                  max="700"
+                  step="25"
+                  value={aiOptions.maxDescriptionLength}
+                  onChange={(e) =>
+                    setAiOptions((prev) => ({
+                      ...prev,
+                      maxDescriptionLength: Number(e.target.value),
+                    }))
+                  }
+                  className="w-full accent-purple-500 cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-slate-500">
+                  <span>200 chars (Punchy)</span>
+                  <span className="text-purple-400 font-medium">700 chars (Max Allowed)</span>
+                </div>
+              </div>
+
+              {/* Title Style Selector */}
+              <div className="space-y-1.5">
+                <label className="font-semibold text-slate-300">Title Optimization Style</label>
+                <select
+                  value={aiOptions.titleStyle}
+                  onChange={(e) =>
+                    setAiOptions((prev) => ({
+                      ...prev,
+                      titleStyle: e.target.value as any,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none"
+                >
+                  <option value="concise">Concise &amp; Punchy (Clean design title, removes clutter)</option>
+                  <option value="seo">SEO &amp; Search Keyword Rich (High Pinterest discovery)</option>
+                  <option value="aesthetic">Aesthetic &amp; Artistic (Emphasis on theme and vibe)</option>
+                  <option value="punchy">Ultra-Short Hook (&le; 50 chars)</option>
+                </select>
+              </div>
+
+              {/* Copy Tone Selector */}
+              <div className="space-y-1.5">
+                <label className="font-semibold text-slate-300">Marketing &amp; Audience Tone</label>
+                <select
+                  value={aiOptions.tone}
+                  onChange={(e) =>
+                    setAiOptions((prev) => ({
+                      ...prev,
+                      tone: e.target.value as any,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none"
+                >
+                  <option value="viral">Viral &amp; High-Converting E-commerce</option>
+                  <option value="luxury">Luxury &amp; Boutique Aesthetic</option>
+                  <option value="modern">Modern Tech &amp; Everyday Protection</option>
+                  <option value="minimalist">Minimalist &amp; Understated</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-800 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowAiSettingsModal(false)}
+                className="rounded-lg bg-purple-600 hover:bg-purple-500 px-4 py-2 text-xs font-semibold text-white transition cursor-pointer"
+              >
+                Save Settings
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Diff / Review Modal */}
+      {showAiDiffModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4">
+          <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl border border-purple-500/40 bg-slate-900 shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 p-5 bg-slate-950/60">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-600/30 border border-purple-500/40 text-purple-300">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Review AI Optimizations</h3>
+                  <p className="text-xs text-slate-400">
+                    Gemini 3.8 summarized descriptions (under 700 chars) and optimized titles. Select pins to apply.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedDiffIndices.size === aiDiffResults.length) {
+                      setSelectedDiffIndices(new Set());
+                    } else {
+                      setSelectedDiffIndices(new Set(aiDiffResults.map((_, i) => i)));
+                    }
+                  }}
+                  className="rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 px-3 py-1 text-xs text-slate-300 transition"
+                >
+                  {selectedDiffIndices.size === aiDiffResults.length ? 'Deselect All' : 'Select All'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAiDiffModal(false)}
+                  className="rounded-lg p-1 text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body: Diff List */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {aiDiffResults.map((diff, diffIdx) => {
+                const isChecked = selectedDiffIndices.has(diffIdx);
+                const originalRow = rows[Number(diff.id)];
+
+                return (
+                  <div
+                    key={diffIdx}
+                    className={`rounded-xl border p-4 transition ${
+                      isChecked
+                        ? 'border-purple-500/50 bg-slate-950/70'
+                        : 'border-slate-800 bg-slate-950/30 opacity-70'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            setSelectedDiffIndices((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(diffIdx)) next.delete(diffIdx);
+                              else next.add(diffIdx);
+                              return next;
+                            });
+                          }}
+                          className="h-4 w-4 rounded border-slate-700 bg-slate-900 accent-purple-500 cursor-pointer"
+                        />
+                        <span className="font-mono text-xs font-bold text-indigo-300 bg-indigo-950/60 border border-indigo-800/50 px-2 py-0.5 rounded">
+                          Pin #{Number(diff.id) + 1} ({originalRow?.['Product ID'] || 'Item'})
+                        </span>
+                        {originalRow?.['Pinterest board'] && (
+                          <span className="text-[11px] text-slate-400">
+                            Board: <strong className="text-slate-300">{originalRow['Pinterest board']}</strong>
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 px-2.5 py-0.5 text-[10px] font-semibold">
+                          {diff.analysis.coherenceScore}% Coherence
+                        </span>
+                        <span className="rounded-full bg-purple-950/80 border border-purple-500/40 text-purple-300 px-2.5 py-0.5 text-[10px] font-semibold">
+                          {diff.analysis.relevanceScore}% Relevance
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Side-by-side diff */}
+                    <div className="grid gap-4 md:grid-cols-2 text-xs">
+                      {/* Before Column */}
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase text-slate-500">Original</span>
+                          <span className="text-[10px] font-mono text-slate-400">
+                            Title: {diff.originalTitle.length}ch | Desc: {diff.originalDescription.length}ch
+                          </span>
+                        </div>
+                        <div>
+                          <p className="font-medium text-slate-300">{diff.originalTitle}</p>
+                          <p className="text-[11px] text-slate-400 mt-1 line-clamp-3">{diff.originalDescription}</p>
+                        </div>
+                      </div>
+
+                      {/* After Column */}
+                      <div className="rounded-lg border border-purple-500/40 bg-purple-950/30 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase text-purple-300 flex items-center gap-1">
+                            <Sparkles className="h-3 w-3 text-purple-400" />
+                            <span>AI Optimized</span>
+                          </span>
+                          <span className="text-[10px] font-mono font-bold text-emerald-400">
+                            Title: {diff.titleCharCount}ch | Desc: {diff.descriptionCharCount}/700ch
+                          </span>
+                        </div>
+                        <div>
+                          <p className="font-bold text-white">{diff.optimizedTitle}</p>
+                          <p className="text-[11px] text-purple-100 mt-1">{diff.summarizedDescription}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* AI Analysis rationale note */}
+                    <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      <p className="text-slate-400 italic">
+                        <strong>AI Insight:</strong> {diff.analysis.summaryNote}
+                      </p>
+                      {diff.analysis.extractedHooks && diff.analysis.extractedHooks.length > 0 && (
+                        <div className="flex gap-1">
+                          {diff.analysis.extractedHooks.map((h, i) => (
+                            <span key={i} className="text-[9px] bg-slate-900 text-purple-300 px-1.5 py-0.5 rounded border border-slate-800">
+                              #{h}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between border-t border-slate-800 p-4 bg-slate-950/60">
+              <span className="text-xs text-slate-400">
+                Selected <strong className="text-white">{selectedDiffIndices.size}</strong> of {aiDiffResults.length} pin optimizations
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAiDiffModal(false)}
+                  className="rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyAiDiffResults}
+                  disabled={selectedDiffIndices.size === 0}
+                  className="rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 px-5 py-2 text-xs font-bold text-white transition shadow-md shadow-purple-950 cursor-pointer"
+                >
+                  Apply Selected Changes ({selectedDiffIndices.size})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -18,6 +18,7 @@ import {
   History,
   Info,
   ExternalLink,
+  Upload,
 } from 'lucide-react';
 import { NichePreset, PlaceholderField, GeneratedDesign, AspectRatio } from '../types';
 import { NICHE_PRESETS } from '../data/presets';
@@ -28,7 +29,7 @@ interface DesignStudioProps {
   designs: GeneratedDesign[];
   onSelectDesign: (design: GeneratedDesign) => void;
   onDeleteDesign: (id: string) => void;
-  onDesignGenerated: (design: GeneratedDesign) => void;
+  onDesignGenerated: (design: GeneratedDesign, listingData?: any) => void;
   resetTrigger?: number;
   onSendToMockup?: (design: GeneratedDesign) => void;
 }
@@ -44,6 +45,20 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
   const [selectedNicheId, setSelectedNicheId] = useState<string>(NICHE_PRESETS[0].id);
   const currentPreset: NichePreset =
     NICHE_PRESETS.find((n) => n.id === selectedNicheId) || NICHE_PRESETS[0];
+
+  // Custom design title state
+  const [designTitle, setDesignTitle] = useState<string>(
+    activeDesign?.title || `${currentPreset.name} Artwork`
+  );
+  const [suggestedTitles, setSuggestedTitles] = useState<string[]>([]);
+  const [isSuggestingTitles, setIsSuggestingTitles] = useState<boolean>(false);
+
+  // Listing / SEO Analysis state
+  const [analyzedListing, setAnalyzedListing] = useState<any>(null);
+  const [isAnalyzingListing, setIsAnalyzingListing] = useState<boolean>(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisSuccess, setAnalysisSuccess] = useState<string | null>(null);
+  const [copiedSection, setCopiedSection] = useState<string | null>(null);
 
   const [template, setTemplate] = useState<string>(currentPreset.template);
   const [placeholders, setPlaceholders] = useState<PlaceholderField[]>(
@@ -71,6 +86,13 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
   // Lightbox Modal
   const [lightboxOpen, setLightboxOpen] = useState<boolean>(false);
 
+  // Sync designTitle when activeDesign changes
+  React.useEffect(() => {
+    if (activeDesign?.title) {
+      setDesignTitle(activeDesign.title);
+    }
+  }, [activeDesign?.id, activeDesign?.title]);
+
   // Assemble dynamic prompt by replacing {{TAG}} with corresponding placeholder value
   const assemblePrompt = (): string => {
     let result = template;
@@ -90,10 +112,95 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
     setSelectedNicheId(nicheId);
     setTemplate(niche.template);
     setPlaceholders(niche.defaultPlaceholders);
+    setDesignTitle(`${niche.name} Artwork`);
+    setSuggestedTitles([]);
     if (niche.defaultAspectRatio) {
       setAspectRatio(niche.defaultAspectRatio);
     }
     setGenerationError(null);
+  };
+
+  // Suggest AI Design Titles
+  const handleSuggestTitles = async () => {
+    setIsSuggestingTitles(true);
+    try {
+      const res = await fetch('/design-api/suggest-titles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: dynamicPrompt,
+          niche: currentPreset.name,
+          currentTitle: designTitle,
+        }),
+      });
+      const data = await res.json();
+      if (Array.isArray(data.titles) && data.titles.length > 0) {
+        setSuggestedTitles(data.titles);
+      }
+    } catch (err) {
+      console.error('Failed to get title suggestions:', err);
+    } finally {
+      setIsSuggestingTitles(false);
+    }
+  };
+
+  // Analyze Design Title & Generate SEO, Keywords, Description & Tags
+  const handleAnalyzeDesignTitleAndSEO = async () => {
+    setIsAnalyzingListing(true);
+    setAnalysisError(null);
+    setAnalysisSuccess(null);
+
+    const titleToUse = designTitle.trim() || activeDesign?.title || `${currentPreset.name} Artwork`;
+    const imageToAnalyze = activeDesign?.imageUrl || currentPreset.sampleImage || '';
+
+    try {
+      const response = await fetch('/design-api/generate-etsy-listing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: dynamicPrompt,
+          imageDataUrl: imageToAnalyze,
+          designTitle: titleToUse,
+          niche: currentPreset.name,
+        }),
+      });
+
+      const rawText = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        throw new Error('Listing service returned an invalid format.');
+      }
+
+      if (!response.ok || !data.listing) {
+        throw new Error(data?.error || 'Failed to analyze design and generate listing metadata.');
+      }
+
+      setAnalyzedListing(data.listing);
+      setAnalysisSuccess(`Successfully analyzed "${titleToUse}"! Generated title, 13 tags, description, and keywords.`);
+
+      // If we have an active design, update its title and attach listing metadata
+      if (activeDesign) {
+        const updatedDesign: GeneratedDesign = {
+          ...activeDesign,
+          title: titleToUse,
+        };
+        onDesignGenerated(updatedDesign, data.listing);
+      }
+    } catch (err: any) {
+      console.error('Analysis error:', err);
+      setAnalysisError(err.message || 'Error communicating with AI analysis engine.');
+    } finally {
+      setIsAnalyzingListing(false);
+    }
+  };
+
+  // Helper copy text
+  const handleCopyText = (text: string, sectionId: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedSection(sectionId);
+    setTimeout(() => setCopiedSection(null), 2000);
   };
 
   // Update a single placeholder value
@@ -247,9 +354,11 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
         throw new Error(data.error || 'Failed to generate design with Gemini.');
       }
 
+      const activeTitle = designTitle.trim() || `${currentPreset.name} Art`;
+
       const newDesign: GeneratedDesign = {
         id: `design-${Date.now()}`,
-        title: `${currentPreset.name} Art`,
+        title: activeTitle,
         prompt: dynamicPrompt,
         imageUrl: data.imageUrl,
         sourceUrl: data.sourceUrl,
@@ -262,7 +371,7 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
         height: data.height,
       };
 
-      onDesignGenerated(newDesign);
+      onDesignGenerated(newDesign, analyzedListing);
     } catch (err: any) {
       console.error('Gemini image generation failed:', err);
       setGenerationError(err.message || 'Image generation failed with Gemini.');
@@ -274,9 +383,10 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
   // Load Preset Sample Artwork
   const handleApplyPresetSample = () => {
     if (currentPreset.sampleImage) {
+      const activeTitle = designTitle.trim() || `${currentPreset.name} Sample Artwork`;
       const presetDesign: GeneratedDesign = {
         id: `preset-${currentPreset.id}`,
-        title: `${currentPreset.name} Sample Artwork`,
+        title: activeTitle,
         prompt: dynamicPrompt,
         imageUrl: currentPreset.sampleImage,
         niche: currentPreset.name,
@@ -285,7 +395,7 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
         isPreset: true,
         aspectRatio: '9:16',
       };
-      onDesignGenerated(presetDesign);
+      onDesignGenerated(presetDesign, analyzedListing);
     }
   };
 
@@ -617,9 +727,78 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
         <div className="lg:col-span-5 space-y-6">
           {/* Assembled Prompt & Generation Control Card */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+            {/* Design Title Feature Section */}
+            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                  <Wand2 className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Design Artwork Title</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleSuggestTitles}
+                  disabled={isSuggestingTitles}
+                  className="flex items-center gap-1 text-[11px] font-medium text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/20 transition cursor-pointer"
+                  title="Generate creative design titles with Gemini"
+                >
+                  <Lightbulb className="w-3 h-3" />
+                  <span>{isSuggestingTitles ? 'Generating...' : 'AI Title Ideas'}</span>
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={designTitle}
+                  onChange={(e) => setDesignTitle(e.target.value)}
+                  placeholder="e.g. Woodland Fox & Sunburst (Stained Glass)"
+                  className="w-full text-xs bg-slate-900 text-white rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                />
+              </div>
+
+              {/* Title Suggestions Pills */}
+              {suggestedTitles.length > 0 && (
+                <div className="pt-1 flex flex-wrap gap-1.5 items-center">
+                  <span className="text-[10px] uppercase font-semibold text-slate-500">Pick:</span>
+                  {suggestedTitles.map((st, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setDesignTitle(st)}
+                      className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800/80 hover:bg-indigo-900/40 text-slate-300 hover:text-indigo-200 border border-slate-700/60 transition cursor-pointer"
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Analyze Design Title & Generate SEO Button */}
+              <div className="pt-2 border-t border-slate-800/70">
+                <button
+                  type="button"
+                  onClick={handleAnalyzeDesignTitleAndSEO}
+                  disabled={isAnalyzingListing}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-indigo-950/70 hover:bg-indigo-900/80 border border-indigo-500/40 text-xs font-semibold text-indigo-200 hover:text-white transition shadow-sm cursor-pointer"
+                >
+                  {isAnalyzingListing ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                      <span>Analyzing Title & Generating SEO Suite...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Analyze Title &amp; Generate Keywords, Description &amp; Tags</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2">
-                <Wand2 className="w-4 h-4 text-indigo-400" />
+                <Layers className="w-4 h-4 text-indigo-400" />
                 <h3 className="text-sm font-semibold text-white">Dynamic Prompt Assembly</h3>
               </div>
               <button
@@ -752,6 +931,41 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
               )}
             </button>
 
+            <div className="flex items-center gap-2 py-1">
+              <div className="h-px bg-slate-800/85 flex-1" />
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Or</span>
+              <div className="h-px bg-slate-800/85 flex-1" />
+            </div>
+
+            <label className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/80 hover:text-white border border-slate-700/60 transition-all cursor-pointer">
+              <Upload className="w-4 h-4 text-indigo-400" />
+              <span>Upload My Custom Design</span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    if (typeof reader.result !== 'string') return;
+                    const uploadedDesign: GeneratedDesign = {
+                      id: `uploaded-${Date.now()}`,
+                      title: file.name.replace(/\.[^/.]+$/, ''),
+                      prompt: 'Custom uploaded artwork design.',
+                      imageUrl: reader.result,
+                      niche: 'Custom Artwork',
+                      createdAt: Date.now(),
+                      placeholders: {},
+                    };
+                    onDesignGenerated(uploadedDesign);
+                  };
+                  reader.readAsDataURL(file);
+                }}
+              />
+            </label>
+
             {/* Instant Sample Preview Helper */}
             {currentPreset.sampleImage && (
               <div className="pt-1 text-center">
@@ -842,6 +1056,186 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
             </div>
           )}
 
+          {/* AI Analysis Feedback / Notification */}
+          {analysisError && (
+            <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-800 text-xs text-rose-300 space-y-1">
+              <p className="font-semibold text-rose-200">Analysis Notice</p>
+              <p>{analysisError}</p>
+            </div>
+          )}
+
+          {analysisSuccess && (
+            <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-800 text-xs text-emerald-300 flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+              <p>{analysisSuccess}</p>
+            </div>
+          )}
+
+          {/* AI Analyzed Listing, Keywords & Tags Card */}
+          {analyzedListing && (
+            <div className="bg-slate-900/90 border border-indigo-500/40 rounded-2xl p-6 shadow-xl space-y-4 animate-in fade-in">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  <h3 className="text-sm font-semibold text-white">
+                    Design SEO Suite (Title, Keywords, Description &amp; 13 Tags)
+                  </h3>
+                </div>
+                <span className="text-[10px] font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded">
+                  Gemini Analyzed
+                </span>
+              </div>
+
+              {/* Title Section */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300">Generated Etsy Title</label>
+                  <span
+                    className={`text-[11px] font-mono ${
+                      (analyzedListing.productTitle?.length || 0) > 140
+                        ? 'text-rose-400 font-bold'
+                        : 'text-slate-400'
+                    }`}
+                  >
+                    {analyzedListing.productTitle?.length || 0}/140 chars
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={analyzedListing.productTitle || ''}
+                    className="w-full text-xs bg-slate-950 text-white rounded-lg p-2.5 border border-slate-700 font-medium"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(analyzedListing.productTitle || '', 'title')}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 flex items-center gap-1 shrink-0 cursor-pointer"
+                  >
+                    {copiedSection === 'title' ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                    <span>{copiedSection === 'title' ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 13 Etsy Search Tags Section */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300">
+                    13 Search Tags ({analyzedListing.etsyTags?.length || 0}/13)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText((analyzedListing.etsyTags || []).join(', '), 'tags')}
+                    className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer font-medium"
+                  >
+                    {copiedSection === 'tags' ? (
+                      <Check className="w-3 h-3 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}
+                    <span>{copiedSection === 'tags' ? 'Copied 13 Tags!' : 'Copy All 13 Tags'}</span>
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                  {(analyzedListing.etsyTags || []).map((tag: string, idx: number) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-indigo-950/60 border border-indigo-700/50 text-indigo-200 text-[11px] font-medium"
+                    >
+                      <span className="text-[9px] text-indigo-400 font-mono">#{idx + 1}</span>
+                      <span>{tag}</span>
+                      <span className="text-[9px] text-slate-500">({tag.length}c)</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Description Section */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Customer Product Description
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(analyzedListing.productDescription || '', 'desc')}
+                    className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer font-medium"
+                  >
+                    {copiedSection === 'desc' ? (
+                      <Check className="w-3 h-3 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}
+                    <span>{copiedSection === 'desc' ? 'Copied Description!' : 'Copy Description'}</span>
+                  </button>
+                </div>
+                <textarea
+                  readOnly
+                  rows={6}
+                  value={analyzedListing.productDescription || ''}
+                  className="w-full text-xs bg-slate-950 text-slate-200 rounded-lg p-2.5 border border-slate-700 font-sans leading-relaxed"
+                />
+              </div>
+
+              {/* Primary & Long-tail Keywords */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800 text-xs">
+                <div>
+                  <span className="text-[11px] font-semibold text-slate-400 block mb-1">
+                    Primary Keywords:
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {(analyzedListing.primaryKeywords || []).map((kw: string, i: number) => (
+                      <span
+                        key={i}
+                        className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] border border-slate-700/50"
+                      >
+                        {kw}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[11px] font-semibold text-slate-400 block mb-1">
+                    Long-Tail Keywords:
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {(analyzedListing.longTailKeywords || []).map((lkw: string, i: number) => (
+                      <span
+                        key={i}
+                        className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] border border-slate-700/50"
+                      >
+                        {lkw}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Strategic Rationale & Style Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-800 text-[11px] text-slate-300">
+                <div>
+                  <span className="text-slate-500 block">Category:</span>
+                  <span className="font-medium text-slate-200">{analyzedListing.category || 'Phone Cases'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Colors:</span>
+                  <span className="font-medium text-slate-200">
+                    {analyzedListing.primaryColor || 'Multi'} / {analyzedListing.secondaryColor || 'Vibrant'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Occasion:</span>
+                  <span className="font-medium text-slate-200">{analyzedListing.occasion || 'Everyday'}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeDesign && <EtsyListingGenerator design={activeDesign} designs={designs} />}
 
           {/* Session Design History */}
@@ -855,11 +1249,11 @@ export const DesignStudio: React.FC<DesignStudioProps> = ({
                 <span className="text-[11px] text-slate-500">Click to switch</span>
               </div>
               <div className="grid grid-cols-4 gap-2.5 max-h-48 overflow-y-auto pr-1">
-                {designs.map((design) => {
+                {designs.map((design, index) => {
                   const isActive = activeDesign?.id === design.id;
                   return (
                     <div
-                      key={design.id}
+                      key={`${design.id}-${index}`}
                       className={`group relative rounded-lg overflow-hidden border cursor-pointer aspect-[9/16] bg-slate-950 ${
                         isActive
                           ? 'border-indigo-500 ring-2 ring-indigo-500/50'

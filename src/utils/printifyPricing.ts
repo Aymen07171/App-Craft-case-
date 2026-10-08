@@ -14,7 +14,7 @@ const FEE_DEFAULT_FIELDS: (keyof EtsyFeeDefaults)[] = [
   'etsyOffsiteAdsOrderCap', 'etsyRegulatoryRate', 'etsyOtherFees',
 ];
 
-export const createDefaultPricing = (sellingPrice = 24.99): ProductPricing => ({
+export const createDefaultPricing = (sellingPrice = 22.20): ProductPricing => ({
   currency: 'USD',
   productionCost: 0,
   productionCostSource: 'printify',
@@ -164,7 +164,7 @@ export function requiredSellingPrice(pricing: ProductPricing, mode: 'margin' | '
   return Math.ceil(high * 100) / 100;
 }
 
-export const PRICING_SCENARIOS = [19.99, 21.99, 24.99, 27.99, 29.99] as const;
+export const PRICING_SCENARIOS = [18.99, 19.99, 21.99, 22.20, 24.99, 27.99, 29.99] as const;
 
 export const formatUsd = (amount: number) => new Intl.NumberFormat('en-US', {
   style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2,

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Check, Copy, ExternalLink, RefreshCw, Settings2, Sparkles } from 'lucide-react';
-import firebaseConfig from '../../../firebase-applet-config.json';
 import { GeneratedDesign } from '../types';
 import {
   connectGoogle,
@@ -60,9 +59,14 @@ interface PendingDuplicate {
 }
 
 const GOOGLE_CLIENT_ID =
-  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
-  firebaseConfig.oAuthClientId ||
-  '171360328307-aqp8b3ko9t1sirdgeu670g4etetsntrm.apps.googleusercontent.com';
+  import.meta.env.VITE_GOOGLE_CLIENT_ID &&
+  !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('your-web-client-id') &&
+  !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('171360328307') &&
+  !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('759990643229') &&
+  !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('krudbd8') &&
+  !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('krucbd0')
+    ? import.meta.env.VITE_GOOGLE_CLIENT_ID
+    : '458826575164-b6jhkrudbd0ribltergiuiafpb1vhjrr.apps.googleusercontent.com';
 
 const getImageDataUrl = async (imageUrl: string): Promise<string> => {
   if (/^data:image\/(?:png|jpe?g|webp);base64,/i.test(imageUrl)) return imageUrl;
@@ -224,8 +228,14 @@ export const EtsyListingGenerator: React.FC<EtsyListingGeneratorProps> = ({ desi
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: selectedDesign.prompt, imageDataUrl, designTitle: selectedDesign.title, niche: selectedDesign.niche }),
         });
-        const data = await response.json() as { listing?: EtsyListingResponse; error?: string };
-        if (!response.ok || !data.listing) throw new Error(data.error || 'Could not generate the Etsy listing.');
+        const rawText = await response.text();
+        let data: { listing?: EtsyListingResponse; error?: string };
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          throw new Error('Listing service returned an invalid format.');
+        }
+        if (!response.ok || !data.listing) throw new Error(data?.error || 'Could not generate the Etsy listing.');
 
         const listing = data.listing;
         const draft = createListingDraft(selectedDesign, settings, nextDrafts[selectedDesign.id]);

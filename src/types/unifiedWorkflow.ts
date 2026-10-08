@@ -6,11 +6,13 @@
 export type ProductWorkflowStep =
   | 'design'
   | 'mockup'
+  | 'direct-upload'
   | 'drive'
   | 'listing'
   | 'export'
   | 'pinterest'
-  | 'printify';
+  | 'printify'
+  | 'excel-printify';
 
 export type ProductStatus = 'DRAFT' | 'READY' | 'PROCESSING' | 'PUBLISHED' | 'ERROR';
 
@@ -56,6 +58,7 @@ export interface UnifiedProductRecord {
     fileUrl: string;
     webContentLink?: string;
     verified?: boolean;
+    isPrimary?: boolean;
     status: 'pending' | 'generating' | 'generated' | 'failed' | 'uploaded';
     error?: string;
   }[];

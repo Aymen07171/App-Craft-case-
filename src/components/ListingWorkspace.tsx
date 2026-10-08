@@ -59,9 +59,16 @@ export const ListingWorkspace: React.FC<ListingWorkspaceProps> = ({
         }),
       });
 
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        throw new Error('Listing service returned an invalid format. Please retry generation.');
+      }
+
       if (!res.ok || !data.listing) {
-        throw new Error(data.error || 'Failed to generate Etsy listing from visual analysis.');
+        throw new Error(data?.error || 'Failed to generate Etsy listing from visual analysis.');
       }
 
       const l = data.listing;

@@ -7,7 +7,13 @@ import { WorkflowStudio } from './components/WorkflowStudio';
 import { DriveAssetManager } from './components/DriveAssetManager';
 import { ListingWorkspace } from './components/ListingWorkspace';
 import { SheetsExportWorkspace } from './components/SheetsExportWorkspace';
+import { PinterestCsvWorkspace } from './components/PinterestCsvWorkspace';
+import { GoogleAuthModal } from './components/GoogleAuthModal';
 import { PrintifyPublishPanel } from './components/PrintifyPublishPanel';
+import { PrintifyKeyModal } from './components/PrintifyKeyModal';
+import { getStoredPrintifyToken } from './services/printifyClient';
+import { DirectUploaderWorkspace } from './components/DirectUploaderWorkspace';
+import { ExcelPrintifyImporter } from './components/ExcelPrintifyImporter';
 import { GeneratedDesign } from './design-studio/types';
 import { PRINTIFY_TEMPLATES } from './data/printifyReferences';
 import {
@@ -20,13 +26,14 @@ import {
   saveProductRecord,
   loadStoredProducts,
 } from './services/productWorkflowManager';
-import { connectGoogleDriveAndSheets } from './services/unifiedGoogleService';
-import firebaseConfig from '../firebase-applet-config.json';
+import {
+  connectGoogleDriveAndSheets,
+  DEFAULT_GOOGLE_CLIENT_ID,
+  getStoredGoogleSession,
+  clearGoogleSession,
+} from './services/unifiedGoogleService';
 
-const GOOGLE_CLIENT_ID =
-  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
-  firebaseConfig.oAuthClientId ||
-  '171360328307-aqp8b3ko9t1sirdgeu670g4etetsntrm.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = DEFAULT_GOOGLE_CLIENT_ID;
 
 export const INITIAL_VITRAIL_DESIGN: GeneratedDesign = {
   id: 'preset-sample-vitrail-01',
@@ -122,12 +129,30 @@ export default function App() {
     );
   });
 
-  // 3. Google OAuth & Drive Authentication State
-  const [googleToken, setGoogleToken] = useState<string | null>(null);
-  const [googleEmail, setGoogleEmail] = useState<string>('');
+  // 3. Google OAuth & Drive Authentication State (persisted across sessions)
+  const [googleToken, setGoogleToken] = useState<string | null>(() => getStoredGoogleSession().token);
+  const [googleEmail, setGoogleEmail] = useState<string>(() => getStoredGoogleSession().email);
   const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
+  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
+  const [isPrintifyKeyModalOpen, setIsPrintifyKeyModalOpen] = useState(false);
   const [isDownloadingAssets, setIsDownloadingAssets] = useState(false);
   const [assetDownloadError, setAssetDownloadError] = useState<string | null>(null);
+
+  // Auto-verify and restore Google auth on reload
+  useEffect(() => {
+    const session = getStoredGoogleSession();
+    if (session.token && session.email && !googleToken) {
+      setGoogleToken(session.token);
+      setGoogleEmail(session.email);
+    }
+  }, []);
+
+  // Workflow products cache for Pinterest & global export
+  const [workflowProducts, setWorkflowProducts] = useState<Record<string, UnifiedProductRecord>>({});
+
+  useEffect(() => {
+    setWorkflowProducts(loadStoredProducts());
+  }, [product]);
 
   // 4. Design Studio State (Preserved)
   const [designs, setDesigns] = useState<GeneratedDesign[]>([INITIAL_VITRAIL_DESIGN]);
@@ -159,21 +184,45 @@ export default function App() {
   };
 
   // Google OAuth flow
-  const handleConnectGoogle = async () => {
+  const handleConnectGoogle = async (customClientId?: unknown, customScope?: unknown) => {
     setGoogleAuthError(null);
+    const resolvedClientId =
+      typeof customClientId === 'string' && customClientId.trim() && !customClientId.includes('[object')
+        ? customClientId.trim()
+        : GOOGLE_CLIENT_ID;
+    const resolvedScope =
+      typeof customScope === 'string' && customScope.trim()
+        ? customScope.trim()
+        : undefined;
+
     try {
-      const res = await connectGoogleDriveAndSheets(GOOGLE_CLIENT_ID);
+      const res = await connectGoogleDriveAndSheets(resolvedClientId, resolvedScope);
       setGoogleToken(res.token);
       setGoogleEmail(res.email);
     } catch (err: any) {
-      console.error('Google OAuth error:', err);
+      const msg = err?.message || '';
+      if (msg.includes('closed') || msg.includes('cancelled') || msg.includes('popup')) {
+        console.log('Google authorization prompt was closed or cancelled by user.');
+        setGoogleAuthError('Sign-in cancelled. You can retry whenever you are ready.');
+        return;
+      }
+      console.warn('Google OAuth notice:', err);
       setGoogleAuthError(err.message || 'Google authorization failed.');
     }
   };
 
+  const handleDisconnectGoogle = () => {
+    clearGoogleSession();
+    setGoogleToken(null);
+    setGoogleEmail('');
+  };
+
   // When a design is generated in Design Studio, update the centralized product design
-  const handleDesignGenerated = (newDesign: GeneratedDesign) => {
-    setDesigns((prev) => [newDesign, ...prev]);
+  const handleDesignGenerated = (newDesign: GeneratedDesign, listingData?: any) => {
+    setDesigns((prev) => {
+      const filtered = prev.filter((d) => d.id !== newDesign.id);
+      return [newDesign, ...filtered];
+    });
     setActiveDesign(newDesign);
 
     // Keep product record connected
@@ -198,6 +247,27 @@ export default function App() {
         ...product.product,
         sku: product.productId,
       },
+      listing: listingData
+        ? {
+            title: listingData.productTitle || product.listing.title || `${newDesign.title} Tough Phone Case`,
+            description: listingData.productDescription || product.listing.description,
+            tags: Array.isArray(listingData.etsyTags) ? listingData.etsyTags.slice(0, 13) : product.listing.tags,
+            category: listingData.category || product.listing.category,
+            primaryColor: listingData.primaryColor || product.listing.primaryColor,
+            secondaryColor: listingData.secondaryColor || product.listing.secondaryColor,
+            style: Array.isArray(listingData.designStyle)
+              ? listingData.designStyle.join(', ')
+              : (listingData.designStyle || product.listing.style),
+            occasion: listingData.occasion || product.listing.occasion,
+            recipient: Array.isArray(listingData.targetCustomer)
+              ? listingData.targetCustomer.join(', ')
+              : (listingData.targetCustomer || product.listing.recipient),
+            primaryKeywords: listingData.primaryKeywords || product.listing.primaryKeywords,
+            longTailKeywords: listingData.longTailKeywords || product.listing.longTailKeywords,
+            searchIntent: listingData.searchIntent || product.listing.searchIntent,
+            keywordRationale: listingData.keywordRationale || product.listing.keywordRationale,
+          }
+        : product.listing,
     };
     handleUpdateProduct(updated);
 
@@ -497,6 +567,167 @@ export default function App() {
     }
   };
 
+  const handleUploadFinishedMockup = (modelId: string, file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return;
+      const imageUrl = reader.result;
+
+      // Find if we already have this mockup in the mockup slots
+      // If not, find the first empty slot index (0..5)
+      let slotIndex = product.mockups.findIndex((m) => m.modelId === modelId);
+      if (slotIndex === -1) {
+        // Find first unoccupied slotIndex (0..5)
+        const occupiedSlots = product.mockups.map((m) => m.slotIndex);
+        slotIndex = [0, 1, 2, 3, 4, 5].find((idx) => !occupiedSlots.includes(idx)) ?? 0;
+      }
+
+      const reference = PRINTIFY_TEMPLATES.find((r) => r.id === modelId);
+      const modelName = reference?.modelName || modelId;
+
+      const newMockupItem = {
+        slotIndex,
+        modelId,
+        modelName,
+        sceneTitle: `${modelName} custom mockup`,
+        localUrl: imageUrl,
+        fileId: '',
+        fileUrl: '',
+        status: 'generated' as const,
+      };
+
+      const updatedMockups = product.mockups.filter((m) => m.modelId !== modelId);
+      updatedMockups.push(newMockupItem);
+      updatedMockups.sort((a, b) => a.slotIndex - b.slotIndex);
+
+      handleUpdateProduct({
+        ...product,
+        mockups: updatedMockups,
+        printify: {
+          ...product.printify,
+          selectedModels: Array.from(new Set([...product.printify.selectedModels, modelName])),
+        },
+      });
+
+      // Also update Mockup Studio state so it displays in preview!
+      setMockupWorkflow((prev) => {
+        const existing = prev.generatedMockups.filter((m) => m.modelId !== modelId);
+        existing.push({
+          modelId,
+          modelName,
+          sceneTitle: `${modelName} custom mockup`,
+          prompt: 'Custom uploaded mockup',
+          imageUrl,
+          status: 'generated',
+        });
+        const activeIds = prev.productReferenceIds.includes(modelId)
+          ? prev.productReferenceIds
+          : [...prev.productReferenceIds, modelId];
+        return {
+          ...prev,
+          productReferenceIds: activeIds,
+          generatedMockups: existing,
+          generatedImageUrl: imageUrl,
+        };
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUploadMultipleFinishedMockups = async (files: File[]) => {
+    // Read all files as base64 URLs
+    const readFiles = await Promise.all(
+      files.map((file) => {
+        return new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+      })
+    );
+
+    // Get selected models
+    const selectedIds = [...mockupWorkflow.productReferenceIds];
+    
+    // If no models are selected, or we have more files than selected models,
+    // let's ensure we have enough models selected to match the files!
+    if (selectedIds.length < files.length) {
+      const unselectedTemplates = PRINTIFY_TEMPLATES.filter((t) => !selectedIds.includes(t.id));
+      const extraNeededCount = files.length - selectedIds.length;
+      const extraIds = unselectedTemplates.slice(0, extraNeededCount).map((t) => t.id);
+      selectedIds.push(...extraIds);
+    }
+
+    // Now update product mockups and mockupWorkflow state!
+    let updatedMockups = [...product.mockups];
+    const generatedMockups = [...mockupWorkflow.generatedMockups];
+
+    readFiles.forEach((imageUrl, index) => {
+      const modelId = selectedIds[index] || `custom-model-${index + 1}`;
+      const reference = PRINTIFY_TEMPLATES.find((r) => r.id === modelId);
+      const modelName = reference?.modelName || `Model ${index + 1}`;
+
+      // Slot Index
+      let slotIndex = updatedMockups.findIndex((m) => m.modelId === modelId);
+      if (slotIndex === -1) {
+        const occupiedSlots = updatedMockups.map((m) => m.slotIndex);
+        slotIndex = [0, 1, 2, 3, 4, 5].find((idx) => !occupiedSlots.includes(idx)) ?? 0;
+      }
+
+      const newMockupItem = {
+        slotIndex,
+        modelId,
+        modelName,
+        sceneTitle: `${modelName} custom mockup`,
+        localUrl: imageUrl,
+        fileId: '',
+        fileUrl: '',
+        status: 'generated' as const,
+      };
+
+      // Filter out any existing mockup in this slot or modelId
+      updatedMockups = updatedMockups.filter((m) => m.modelId !== modelId && m.slotIndex !== slotIndex);
+      updatedMockups.push(newMockupItem);
+
+      // Update mockupWorkflow.generatedMockups list
+      const genIndex = generatedMockups.findIndex((m) => m.modelId === modelId);
+      const newGenItem = {
+        modelId,
+        modelName,
+        sceneTitle: `${modelName} custom mockup`,
+        prompt: 'Custom uploaded mockup',
+        imageUrl,
+        status: 'generated' as const,
+      };
+      if (genIndex > -1) {
+        generatedMockups[genIndex] = newGenItem;
+      } else {
+        generatedMockups.push(newGenItem);
+      }
+    });
+
+    updatedMockups.sort((a, b) => a.slotIndex - b.slotIndex);
+
+    // Get names of all selected models to store in printify specs
+    const selectedModelNames = selectedIds.map(id => PRINTIFY_TEMPLATES.find(r => r.id === id)?.modelName || id);
+
+    handleUpdateProduct({
+      ...product,
+      mockups: updatedMockups,
+      printify: {
+        ...product.printify,
+        selectedModels: selectedModelNames,
+      },
+    });
+
+    setMockupWorkflow((prev) => ({
+      ...prev,
+      productReferenceIds: selectedIds,
+      generatedMockups,
+      generatedImageUrl: readFiles[0] || prev.generatedImageUrl,
+    }));
+  };
+
   // Start a fresh product with new sequential Product ID
   const handleStartNewProduct = () => {
     const nextProduct = createInitialProductRecord(
@@ -589,9 +820,12 @@ export default function App() {
             product.listing.tags.filter((t) => t.trim()).length === 13
         )}
         printifyCreated={Boolean(product.automation.printifyProductId)}
+        printifyConnected={Boolean(getStoredPrintifyToken())}
+        onOpenPrintifyKeyModal={() => setIsPrintifyKeyModalOpen(true)}
         googleConnected={Boolean(googleToken)}
         googleEmail={googleEmail}
-        onConnectGoogle={handleConnectGoogle}
+        onConnectGoogle={() => handleConnectGoogle()}
+        onOpenGoogleSettings={() => setIsGoogleModalOpen(true)}
       />
 
       {/* Main View Area Rendered by Pipeline Step */}
@@ -699,8 +933,20 @@ export default function App() {
                 }))
               }
               onContinueToDrive={() => setPipelineStep('drive')}
+              onUploadFinishedMockup={handleUploadFinishedMockup}
+              onUploadMultipleFinishedMockups={handleUploadMultipleFinishedMockups}
             />
           </div>
+        )}
+
+        {/* Step 2b: Direct Asset Uploader */}
+        {pipelineStep === 'direct-upload' && (
+          <DirectUploaderWorkspace
+            product={product}
+            onUpdateProduct={handleUpdateProduct}
+            onContinueToDrive={() => setPipelineStep('drive')}
+            onStartNewProduct={handleStartNewProduct}
+          />
         )}
 
         {/* Step 3: Google Drive Canonical Storage */}
@@ -708,7 +954,7 @@ export default function App() {
           <DriveAssetManager
             product={product}
             googleToken={googleToken}
-            onConnectGoogle={handleConnectGoogle}
+            onConnectGoogle={() => handleConnectGoogle()}
             onUpdateProduct={handleUpdateProduct}
             onContinueToListing={() => setPipelineStep('listing')}
           />
@@ -728,26 +974,82 @@ export default function App() {
           <SheetsExportWorkspace
             product={product}
             googleToken={googleToken}
-            onConnectGoogle={handleConnectGoogle}
+            onConnectGoogle={() => handleConnectGoogle()}
             onUpdateProduct={handleUpdateProduct}
             onStartNewProduct={handleStartNewProduct}
           />
         )}
 
+        {/* Step 6: Pinterest Bulk Pin CSV & Google Sheets Integration */}
+        {pipelineStep === 'pinterest' && (
+          <PinterestCsvWorkspace
+            product={product}
+            workflowProducts={workflowProducts}
+            googleToken={googleToken}
+            googleEmail={googleEmail}
+            onConnectGoogle={() => handleConnectGoogle()}
+            onOpenGoogleSettings={() => setIsGoogleModalOpen(true)}
+          />
+        )}
+
+        {/* Step 7: Prepare & publish on Printify */}
         {pipelineStep === 'printify' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div>
-                <h1 className="text-xl font-bold text-white sm:text-2xl">Step 6: Prepare & publish on Printify</h1>
+                <h1 className="text-xl font-bold text-white sm:text-2xl">Step 7: Prepare & publish on Printify</h1>
                 <p className="mt-1 text-xs text-slate-400">
                   Select this product’s artwork and mockups, set case variants, review your profit, and create or publish a Printify product.
                 </p>
               </div>
             </div>
-            <PrintifyPublishPanel product={product} designs={designs} onUpdateProduct={handleUpdateProduct} />
+            <PrintifyPublishPanel
+              product={product}
+              designs={designs}
+              onUpdateProduct={handleUpdateProduct}
+              onOpenExcelImporter={() => setPipelineStep('excel-printify')}
+            />
+          </div>
+        )}
+
+        {/* Step 8: Excel to Printify Bulk Importer */}
+        {pipelineStep === 'excel-printify' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div>
+                <h1 className="text-xl font-bold text-white sm:text-2xl">Step 8: Excel to Printify Bulk Importer</h1>
+                <p className="mt-1 text-xs text-slate-400">
+                  Upload an Excel spreadsheet with title, description, tags, and design image URLs to sequentially import products into Printify.
+                </p>
+              </div>
+            </div>
+            <ExcelPrintifyImporter
+              googleToken={googleToken}
+              googleEmail={googleEmail}
+              onConnectGoogle={() => handleConnectGoogle()}
+              onOpenGoogleSettings={() => setIsGoogleModalOpen(true)}
+              onNavigateToPublishPanel={() => setPipelineStep('printify')}
+            />
           </div>
         )}
       </main>
+
+      {/* Google OAuth & Account Settings Modal */}
+      <GoogleAuthModal
+        isOpen={isGoogleModalOpen}
+        onClose={() => setIsGoogleModalOpen(false)}
+        googleConnected={Boolean(googleToken)}
+        googleEmail={googleEmail}
+        googleAuthError={googleAuthError}
+        onConnect={handleConnectGoogle}
+        onDisconnect={handleDisconnectGoogle}
+      />
+
+      {/* Global Printify Key Import & Verification Modal */}
+      <PrintifyKeyModal
+        isOpen={isPrintifyKeyModalOpen}
+        onClose={() => setIsPrintifyKeyModalOpen(false)}
+      />
 
       {/* Global Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950/80 py-4 text-center text-xs text-slate-500">

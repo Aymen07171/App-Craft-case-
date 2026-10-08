@@ -1,12 +1,3 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import firebaseConfig from '../../../firebase-applet-config.json';
-
-const getFirebaseAuth = () => {
-  const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-  return getAuth(app);
-};
-
 export const SHEET_HEADERS = [
   'Product_ID',
   'Design_Name',
@@ -112,33 +103,23 @@ const loadIdentityScript = (): Promise<void> => {
   return identityScriptPromise;
 };
 
-export const connectGoogle = async (clientId: string): Promise<{ token: string; email: string }> => {
-  // 1. Try Firebase Auth popup flow
-  try {
-    const auth = getFirebaseAuth();
-    const provider = new GoogleAuthProvider();
-    provider.addScope('https://www.googleapis.com/auth/drive.file');
-    provider.addScope('https://www.googleapis.com/auth/spreadsheets');
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (credential?.accessToken) {
-      return {
-        token: credential.accessToken,
-        email: result.user?.email || 'Google account',
-      };
-    }
-  } catch (fbError: any) {
-    if (fbError?.code === 'auth/popup-closed-by-user' || fbError?.code === 'auth/cancelled-popup-request') {
-      throw new Error('Sign-in cancelled by user.');
-    }
-    console.warn('Firebase Auth popup error, falling back to GIS:', fbError);
-  }
+export const connectGoogle = async (clientId?: unknown): Promise<{ token: string; email: string }> => {
+  const envId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const sanitizedClientId =
+    typeof clientId === 'string' && clientId.trim() && !clientId.includes('[object')
+      ? clientId.trim()
+      : null;
 
-  // 2. Fallback to Google Identity Services
   const effectiveClientId =
-    clientId ||
-    firebaseConfig.oAuthClientId ||
-    '171360328307-aqp8b3ko9t1sirdgeu670g4etetsntrm.apps.googleusercontent.com';
+    sanitizedClientId ||
+    (envId &&
+     !envId.includes('your-web-client-id') &&
+     !envId.includes('171360328307') &&
+     !envId.includes('759990643229') &&
+     !envId.includes('krudbd8') &&
+     !envId.includes('krucbd0')
+      ? envId
+      : '458826575164-b6jhkrudbd0ribltergiuiafpb1vhjrr.apps.googleusercontent.com');
 
   if (!effectiveClientId) throw new Error('Set VITE_GOOGLE_CLIENT_ID to enable Google Sheets.');
   await loadIdentityScript();
@@ -147,7 +128,7 @@ export const connectGoogle = async (clientId: string): Promise<{ token: string; 
 
   const token = await new Promise<string>((resolve, reject) => {
     const client = oauth2.initTokenClient({
-      client_id: effectiveClientId,
+      client_id: String(effectiveClientId).trim(),
       scope: GOOGLE_SCOPES,
       callback: (response) => {
         if (response.error || !response.access_token) {

@@ -4,6 +4,7 @@
  */
 
 import { UnifiedProductRecord } from '../types/unifiedWorkflow';
+import { createPricingForProduct } from '../utils/printifyPricing';
 
 const PRODUCT_SEQUENCE_KEY = 'casecraft-product-sequence-v2';
 const PRODUCTS_STORE_KEY = 'casecraft-unified-products-v1';
@@ -47,7 +48,7 @@ export const createInitialProductRecord = (
       title: '',
       description: '',
       tags: Array(13).fill(''),
-      category: 'Electronics Cases',
+      category: 'Phone Cases',
       primaryColor: '',
       secondaryColor: '',
       style: '',
@@ -56,11 +57,12 @@ export const createInitialProductRecord = (
     },
     product: {
       sku: productId,
-      price: 24.99,
+      price: 22.20,
     },
+    pricing: createPricingForProduct(22.20),
     printify: {
-      blueprintId: '68', // Printify Tough Case Blueprint default
-      printProviderId: '1', // Spoke Custom Products / default provider
+      blueprintId: '269', // Printify Tough Phone Cases Blueprint (Real catalog ID: 269)
+      printProviderId: '1', // SPOKE Custom Products / Printify Choice provider
       variantIds: [],
       selectedModels: ['iPhone 15 Pro', 'iPhone 15 Pro Max', 'Samsung Galaxy S24'],
     },

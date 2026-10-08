@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Palette,
   Camera,
@@ -14,6 +14,11 @@ import {
   UploadCloud,
   Key,
   Share2,
+  ChevronDown,
+  Smartphone,
+  Layout,
+  ExternalLink,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { ProductWorkflowStep } from '../types/unifiedWorkflow';
 
@@ -31,6 +36,8 @@ interface WorkflowNavProps {
   onConnectGoogle?: () => void;
   onOpenGoogleSettings?: () => void;
   printifyCreated: boolean;
+  printifyConnected?: boolean;
+  onOpenPrintifyKeyModal?: () => void;
 }
 
 const STEPS: {
@@ -50,6 +57,12 @@ const STEPS: {
     title: '2. Mockup Generation',
     subtitle: 'Printify lifestyle scenes',
     icon: Camera,
+  },
+  {
+    id: 'direct-upload',
+    title: '2b. Direct Asset Uploader',
+    subtitle: 'Upload finished artwork & mockups',
+    icon: UploadCloud,
   },
   {
     id: 'drive',
@@ -81,6 +94,12 @@ const STEPS: {
     subtitle: 'Create a Printify draft',
     icon: UploadCloud,
   },
+  {
+    id: 'excel-printify',
+    title: '8. Excel Bulk Importer',
+    subtitle: 'Auto-import into Printify',
+    icon: FileSpreadsheet,
+  },
 ];
 
 export const WorkflowNav: React.FC<WorkflowNavProps> = ({
@@ -97,13 +116,19 @@ export const WorkflowNav: React.FC<WorkflowNavProps> = ({
   onConnectGoogle,
   onOpenGoogleSettings,
   printifyCreated,
+  printifyConnected,
+  onOpenPrintifyKeyModal,
 }) => {
+  const [showWorkflowsMenu, setShowWorkflowsMenu] = useState(false);
+
   const isStepDone = (stepId: ProductWorkflowStep): boolean => {
     switch (stepId) {
       case 'design':
         return hasDesign;
       case 'mockup':
         return mockupsCount > 0;
+      case 'direct-upload':
+        return hasDesign && mockupsCount > 0;
       case 'drive':
         return hasDriveAssets;
       case 'listing':
@@ -113,6 +138,8 @@ export const WorkflowNav: React.FC<WorkflowNavProps> = ({
       case 'pinterest':
         return hasListing && (hasDesign || mockupsCount > 0);
       case 'printify':
+        return printifyCreated;
+      case 'excel-printify':
         return printifyCreated;
       default:
         return false;
@@ -129,15 +156,98 @@ export const WorkflowNav: React.FC<WorkflowNavProps> = ({
               <Sparkles className="h-4 w-4 text-indigo-400" />
             </div>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-base font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-indigo-200 bg-clip-text text-transparent">
+          <div className="relative">
+            <div
+              onClick={() => setShowWorkflowsMenu(!showWorkflowsMenu)}
+              className="flex items-center gap-1.5 cursor-pointer select-none group"
+            >
+              <span className="text-base font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-indigo-200 bg-clip-text text-transparent group-hover:text-white transition">
                 CaseCraft Studio
               </span>
-              <span className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-medium text-indigo-300">
-                End-to-End Pipeline
+              <span className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-medium text-indigo-300 flex items-center gap-1">
+                Unified Pipeline <ChevronDown className="w-3 h-3 text-indigo-400" />
               </span>
             </div>
+
+            {/* Workflows Select Menu */}
+            {showWorkflowsMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setShowWorkflowsMenu(false)}
+                />
+                <div className="absolute top-full left-0 mt-2 w-80 rounded-xl border border-slate-800 bg-slate-900 p-3 shadow-2xl z-20 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150 text-slate-100 font-sans">
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider px-2 py-1">
+                    Select Active Workflow
+                  </p>
+                  <div className="flex items-start gap-3 p-2.5 rounded-lg text-left bg-indigo-950/40 border border-indigo-800/30 shrink-0">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-950 border border-indigo-800/50 flex items-center justify-center shrink-0">
+                      <Layout className="w-4 h-4 text-indigo-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-indigo-300">7-Stage End-to-End Pipeline</p>
+                      <p className="text-[10px] text-indigo-200 mt-0.5 font-medium">Full workflow: Design, Drive, Etsy, Sheets, and automation.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectStep('excel-printify');
+                      setShowWorkflowsMenu(false);
+                    }}
+                    className="w-full flex items-start gap-3 p-2.5 rounded-lg text-left hover:bg-slate-800/80 transition cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-emerald-950 border border-emerald-700/50 flex items-center justify-center shrink-0">
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-white">Excel to Printify Importer (Step 8)</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Upload product Excel file &amp; auto-import sequentially into Printify.</p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectStep('direct-upload');
+                      setShowWorkflowsMenu(false);
+                    }}
+                    className="w-full flex items-start gap-3 p-2.5 rounded-lg text-left hover:bg-slate-800/80 transition cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-indigo-950 border border-indigo-700/50 flex items-center justify-center shrink-0">
+                      <UploadCloud className="w-4 h-4 text-indigo-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-white">Direct Asset Uploader (Step 2b)</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Skip AI and upload finished artwork & multiple mockups directly.</p>
+                    </div>
+                  </button>
+                  <a
+                    href="/design-studio"
+                    className="flex items-start gap-3 p-2.5 rounded-lg text-left hover:bg-slate-800/80 transition"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-pink-950 border border-pink-800/50 flex items-center justify-center shrink-0">
+                      <Palette className="w-4 h-4 text-pink-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-white">Standalone Design Studio</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Dynamic niche prompt generator & Gemini design builder.</p>
+                    </div>
+                  </a>
+                  <a
+                    href="/mockup-studio"
+                    className="flex items-start gap-3 p-2.5 rounded-lg text-left hover:bg-slate-800/80 transition"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-sky-950 border border-sky-800/50 flex items-center justify-center shrink-0">
+                      <Smartphone className="w-4 h-4 text-sky-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-white">Standalone Mockup Studio</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Multi-platform device mockup & photorealistic AI lifestyle scenes.</p>
+                    </div>
+                  </a>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -149,8 +259,29 @@ export const WorkflowNav: React.FC<WorkflowNavProps> = ({
           </span>
         </div>
 
-        {/* Google Workspace Connection Pill */}
+        {/* Integrations Status & Actions: Printify & Google Workspace */}
         <div className="flex items-center gap-2">
+          {onOpenPrintifyKeyModal && (
+            <button
+              type="button"
+              onClick={onOpenPrintifyKeyModal}
+              title={printifyConnected ? 'Printify API connected - click to manage key' : 'Import Printify Personal Access Token'}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition cursor-pointer ${
+                printifyConnected
+                  ? 'border-emerald-500/30 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-900/50'
+                  : 'border-indigo-500/40 bg-indigo-950/40 text-indigo-200 hover:bg-indigo-900/50'
+              }`}
+            >
+              <Key className="h-3.5 w-3.5 text-indigo-400" />
+              <span>{printifyConnected ? 'Printify Key' : 'Import Printify Key'}</span>
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  printifyConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                }`}
+              />
+            </button>
+          )}
+
           {googleConnected ? (
             <div className="flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-950/40 px-3 py-1 text-xs text-emerald-300">
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />

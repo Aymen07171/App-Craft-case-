@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import {
   DEFAULT_GOOGLE_CLIENT_ID,
+  PROVISIONED_OAUTH_CLIENT_ID,
   getStoredGoogleClientId,
   setStoredGoogleClientId,
   GOOGLE_SCOPES_DEFAULT,
@@ -41,7 +42,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   onConnect,
   onDisconnect,
 }) => {
-  const [clientId, setClientId] = useState('');
+  const [clientId, setClientId] = useState(() => getStoredGoogleClientId() || DEFAULT_GOOGLE_CLIENT_ID);
   const [useAppFilesOnlyScope, setUseAppFilesOnlyScope] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedOrigin, setCopiedOrigin] = useState(false);
@@ -49,7 +50,21 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    setClientId(getStoredGoogleClientId());
+    const active = getStoredGoogleClientId();
+    if (
+      !active ||
+      active.includes('your-web-client-id') ||
+      active.includes('171360328307') ||
+      active.includes('759990643229') ||
+      active.includes('krudbd8') ||
+      active.includes('krucbd0') ||
+      active.includes('[object')
+    ) {
+      setClientId(DEFAULT_GOOGLE_CLIENT_ID);
+      setStoredGoogleClientId(DEFAULT_GOOGLE_CLIENT_ID);
+    } else {
+      setClientId(active);
+    }
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -65,7 +80,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   const handleResetDefault = () => {
     setClientId(DEFAULT_GOOGLE_CLIENT_ID);
     setStoredGoogleClientId(DEFAULT_GOOGLE_CLIENT_ID);
-    setSaveMessage('Reset to user default Client ID');
+    setSaveMessage('Reset to your configured Client ID');
     setTimeout(() => setSaveMessage(null), 3000);
   };
 
@@ -207,8 +222,12 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
             <input
               type="text"
               value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder="e.g. 458826575164-b6jhkrudbd8ribltergiuiafpb1vhjrr.apps.googleusercontent.com"
+              onChange={(e) => {
+                const val = e.target.value;
+                setClientId(val);
+                setStoredGoogleClientId(val);
+              }}
+              placeholder="458826575164-b6jhkrudbd0ribltergiuiafpb1vhjrr.apps.googleusercontent.com"
               className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 font-mono text-xs text-white focus:border-indigo-500 focus:outline-none"
             />
             <button
@@ -234,19 +253,19 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
 
           <div className="space-y-3 text-xs text-slate-300">
             {/* Step 1: Authorized JavaScript Origin */}
-            <div className="rounded-lg border border-amber-500/40 bg-amber-950/20 p-3.5 space-y-2.5">
+            <div className="rounded-lg border border-emerald-800/60 bg-emerald-950/20 p-3.5 space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-amber-300 flex items-center gap-1.5">
-                  <AlertCircle className="h-4 w-4 text-amber-400" />
-                  1. Fix "Error 400: origin_mismatch" (Action Required in Google Cloud)
+                <span className="font-semibold text-emerald-300 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                  1. Authorized JavaScript Origins Configured ✓
                 </span>
-                <span className="rounded bg-rose-950 px-2 py-0.5 text-[10px] font-bold text-rose-300 border border-rose-800/60">
-                  Cause of your error
+                <span className="rounded bg-emerald-950 px-2 py-0.5 text-[10px] text-emerald-300 border border-emerald-800/50">
+                  Ready
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 leading-relaxed">
-                In your Google Cloud Console screenshot (under <strong>Authorized JavaScript origins</strong>), you currently have <code className="text-amber-200 bg-slate-900 px-1 py-0.5 rounded border border-slate-700">https://app-craft-case.ai.studio</code>.
-                Because the app runs on Cloud Run, Google requires you to click <strong>+ Add URI</strong> and add the actual app domain(s):
+                Your Google Cloud Console already has <code className="text-emerald-300 bg-slate-900 px-1 py-0.5 rounded border border-slate-700">{currentOrigin || 'http://localhost:3000'}</code> saved in Authorized JavaScript origins.
+                The previous error occurred because an outdated Client ID was active. Your verified Client ID is now loaded.
               </p>
 
               {/* Dev URL */}

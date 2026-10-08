@@ -34,6 +34,8 @@ interface WorkflowStudioProps {
   onRegenerateMockup: (modelId: string) => void;
   onRemoveMockup: (modelId: string) => void;
   onContinueToDrive?: () => void;
+  onUploadFinishedMockup?: (modelId: string, file: File) => void;
+  onUploadMultipleFinishedMockups?: (files: File[]) => void;
 }
 
 const STEPS: { id: MockupWorkflowStep; title: string; description: string }[] = [
@@ -62,6 +64,8 @@ export const WorkflowStudio: React.FC<WorkflowStudioProps> = ({
   onRegenerateMockup,
   onRemoveMockup,
   onContinueToDrive,
+  onUploadFinishedMockup,
+  onUploadMultipleFinishedMockups,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sceneReferenceInputRef = useRef<HTMLInputElement>(null);
@@ -197,35 +201,56 @@ export const WorkflowStudio: React.FC<WorkflowStudioProps> = ({
                               <Smartphone className="h-5 w-5" />
                             </span>
                           )}
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-white">{reference.modelName}</p>
-                            <p className="mt-1 truncate text-xs text-slate-400">{workflow.productReferenceImages[reference.id]?.fileName ?? 'No product reference image'}</p>
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 flex-wrap items-center gap-2">
-                          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-700 px-2.5 py-2 text-xs text-slate-200 transition hover:bg-slate-800">
-                            <Upload className="h-3.5 w-3.5" />
-                            {workflow.productReferenceImages[reference.id] ? 'Replace image' : 'Add reference image'}
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="sr-only"
-                              onChange={(event) => {
-                                const file = event.target.files?.[0];
-                                if (file) onUploadProductReference(reference.id, file);
-                                event.target.value = '';
-                              }}
-                            />
-                          </label>
-                          {workflow.productReferenceImages[reference.id] && (
-                            <button type="button" aria-label={`Remove ${reference.modelName} reference image`} onClick={() => onRemoveProductReference(reference.id)} className="rounded-md border border-slate-700 p-2 text-slate-300 hover:border-rose-400/50 hover:text-rose-200">
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                          <button type="button" aria-label={`Remove ${reference.modelName}`} onClick={() => onToggleReference(reference.id)} className="rounded-md border border-slate-700 p-2 text-slate-300 hover:border-rose-400/50 hover:text-rose-200">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
+                           <div className="min-w-0">
+                             <p className="truncate text-sm font-medium text-white">{reference.modelName}</p>
+                             <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                               <p className="truncate text-xs text-slate-400">{workflow.productReferenceImages[reference.id]?.fileName ?? 'No product reference image'}</p>
+                               {workflow.generatedMockups.some((m) => m.modelId === reference.id && m.imageUrl) && (
+                                 <span className="inline-flex items-center gap-1 rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold text-emerald-400 border border-emerald-500/30 animate-pulse">
+                                   ✓ Mockup Ready
+                                 </span>
+                               )}
+                             </div>
+                           </div>
+                         </div>
+                         <div className="flex shrink-0 flex-wrap items-center gap-2">
+                           <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-700 px-2.5 py-2 text-xs text-slate-200 transition hover:bg-slate-800">
+                             <Upload className="h-3.5 w-3.5" />
+                             {workflow.productReferenceImages[reference.id] ? 'Replace image' : 'Add reference image'}
+                             <input
+                               type="file"
+                               accept="image/*"
+                               className="sr-only"
+                               onChange={(event) => {
+                                 const file = event.target.files?.[0];
+                                 if (file) onUploadProductReference(reference.id, file);
+                                 event.target.value = '';
+                               }}
+                             />
+                           </label>
+                           <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-indigo-500/40 bg-indigo-950/40 hover:bg-indigo-900/50 px-2.5 py-2 text-xs font-semibold text-indigo-200 transition">
+                             <Upload className="h-3.5 w-3.5" />
+                             <span>Upload Finished Mockup</span>
+                             <input
+                               type="file"
+                               accept="image/*"
+                               className="sr-only"
+                               onChange={(event) => {
+                                 const file = event.target.files?.[0];
+                                 if (file && onUploadFinishedMockup) onUploadFinishedMockup(reference.id, file);
+                                 event.target.value = '';
+                               }}
+                             />
+                           </label>
+                           {workflow.productReferenceImages[reference.id] && (
+                             <button type="button" aria-label={`Remove ${reference.modelName} reference image`} onClick={() => onRemoveProductReference(reference.id)} className="rounded-md border border-slate-700 p-2 text-slate-300 hover:border-rose-400/50 hover:text-rose-200">
+                               <X className="h-3.5 w-3.5" />
+                             </button>
+                           )}
+                           <button type="button" aria-label={`Remove ${reference.modelName}`} onClick={() => onToggleReference(reference.id)} className="rounded-md border border-slate-700 p-2 text-slate-300 hover:border-rose-400/50 hover:text-rose-200">
+                             <Trash2 className="h-3.5 w-3.5" />
+                           </button>
+                         </div>
                       </li>
                     ))}
                   </ul>
@@ -345,6 +370,73 @@ export const WorkflowStudio: React.FC<WorkflowStudioProps> = ({
                 <Sparkles className="h-4 w-4" />
                 {workflow.isGenerating ? workflow.generationProgress ?? 'Generating scenes...' : `Generate Scenes (${selectedReferences.length})`}
               </button>
+
+              {selectedReferences.length > 0 && (
+                <div className="mt-8 pt-6 border-t border-slate-800/80 w-full max-w-lg text-left space-y-4">
+                  <div>
+                    <label className="flex flex-col items-center justify-center p-6 border border-dashed border-indigo-500/40 rounded-xl bg-indigo-950/20 hover:bg-indigo-950/30 hover:border-indigo-500/60 transition-all duration-200 cursor-pointer text-center group">
+                      <Upload className="w-8 h-8 text-indigo-400 mb-2 group-hover:scale-110 transition-transform" />
+                      <span className="text-xs font-bold text-white">Bulk Upload Multiple Mockups</span>
+                      <span className="text-[10px] text-slate-400 mt-1 max-w-xs">
+                        Select 2 or more files. We'll automatically match them in order to your selected models!
+                      </span>
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files.length > 0 && onUploadMultipleFinishedMockups) {
+                            onUploadMultipleFinishedMockups(Array.from(e.target.files));
+                          }
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  <p className="text-xs font-semibold uppercase text-slate-400 mb-1 tracking-wider">
+                    Or, Upload Your Own Completed Mockup Images directly:
+                  </p>
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {selectedReferences.map((ref) => {
+                      const hasMockup = workflow.generatedMockups.some((m) => m.modelId === ref.id && m.imageUrl);
+                      return (
+                        <div key={ref.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs">
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Smartphone className="w-4 h-4 text-indigo-400" />
+                            <span className="font-semibold text-white">{ref.modelName}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {hasMockup && (
+                              <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30">
+                                ✓ Uploaded
+                              </span>
+                            )}
+                            <label className="inline-flex cursor-pointer items-center gap-1.5 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition">
+                              <Upload className="w-3.5 h-3.5" />
+                              <span>{hasMockup ? 'Replace Mockup' : 'Upload Mockup'}</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="sr-only"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file && onUploadFinishedMockup) onUploadFinishedMockup(ref.id, file);
+                                  e.target.value = '';
+                                }}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-3 text-[10px] text-slate-500 italic">
+                    Note: Uploading mockups will automatically mark them as generated, and bypasses local or hosted ComfyUI image models.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
