@@ -27,12 +27,12 @@ const getSafeAuth = () => {
 const auth = getSafeAuth();
 
 export const USER_PROVIDED_CLIENT_ID =
-  '458826575164-b6jhkrudbd0ribltergiuiafpb1vhjrr.apps.googleusercontent.com';
+  '458826575164-b6jhkrudbd8ribltergiuiafpb1vhjrr.apps.googleusercontent.com';
 
 export const PROVISIONED_OAUTH_CLIENT_ID =
   (firebaseConfig.oAuthClientId &&
    !firebaseConfig.oAuthClientId.includes('759990643229') &&
-   !firebaseConfig.oAuthClientId.includes('krudbd8') &&
+   !firebaseConfig.oAuthClientId.includes('krudbd0') &&
    !firebaseConfig.oAuthClientId.includes('krucbd0')
     ? firebaseConfig.oAuthClientId
     : USER_PROVIDED_CLIENT_ID);
@@ -42,7 +42,7 @@ export const DEFAULT_GOOGLE_CLIENT_ID =
   !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('your-web-client-id') &&
   !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('171360328307') &&
   !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('759990643229') &&
-  !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('krudbd8') &&
+  !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('krudbd0') &&
   !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('krucbd0')
     ? import.meta.env.VITE_GOOGLE_CLIENT_ID
     : USER_PROVIDED_CLIENT_ID;
@@ -105,7 +105,7 @@ export const getStoredGoogleClientId = (): string => {
     stored.includes('your-web-client-id') ||
     stored.includes('171360328307') ||
     stored.includes('759990643229') ||
-    stored.includes('krudbd8') ||
+    stored.includes('krudbd0') ||
     stored.includes('krucbd0') ||
     stored.includes('[object')
   ) {
@@ -122,7 +122,7 @@ export const setStoredGoogleClientId = (clientId: unknown): void => {
     !clientId.trim() ||
     clientId.includes('your-web-client-id') ||
     clientId.includes('759990643229') ||
-    clientId.includes('krudbd8') ||
+    clientId.includes('krudbd0') ||
     clientId.includes('krucbd0') ||
     clientId.includes('[object')
   ) {

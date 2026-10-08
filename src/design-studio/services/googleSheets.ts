@@ -116,10 +116,10 @@ export const connectGoogle = async (clientId?: unknown): Promise<{ token: string
      !envId.includes('your-web-client-id') &&
      !envId.includes('171360328307') &&
      !envId.includes('759990643229') &&
-     !envId.includes('krudbd8') &&
+     !envId.includes('krudbd0') &&
      !envId.includes('krucbd0')
       ? envId
-      : '458826575164-b6jhkrudbd0ribltergiuiafpb1vhjrr.apps.googleusercontent.com');
+      : '458826575164-b6jhkrudbd8ribltergiuiafpb1vhjrr.apps.googleusercontent.com');
 
   if (!effectiveClientId) throw new Error('Set VITE_GOOGLE_CLIENT_ID to enable Google Sheets.');
   await loadIdentityScript();

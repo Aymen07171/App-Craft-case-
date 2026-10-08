@@ -63,10 +63,10 @@ const GOOGLE_CLIENT_ID =
   !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('your-web-client-id') &&
   !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('171360328307') &&
   !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('759990643229') &&
-  !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('krudbd8') &&
+  !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('krudbd0') &&
   !import.meta.env.VITE_GOOGLE_CLIENT_ID.includes('krucbd0')
     ? import.meta.env.VITE_GOOGLE_CLIENT_ID
-    : '458826575164-b6jhkrudbd0ribltergiuiafpb1vhjrr.apps.googleusercontent.com';
+    : '458826575164-b6jhkrudbd8ribltergiuiafpb1vhjrr.apps.googleusercontent.com';
 
 const getImageDataUrl = async (imageUrl: string): Promise<string> => {
   if (/^data:image\/(?:png|jpe?g|webp);base64,/i.test(imageUrl)) return imageUrl;

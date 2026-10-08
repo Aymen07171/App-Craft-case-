@@ -56,7 +56,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
       active.includes('your-web-client-id') ||
       active.includes('171360328307') ||
       active.includes('759990643229') ||
-      active.includes('krudbd8') ||
+      active.includes('krudbd0') ||
       active.includes('krucbd0') ||
       active.includes('[object')
     ) {
@@ -227,7 +227,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                 setClientId(val);
                 setStoredGoogleClientId(val);
               }}
-              placeholder="458826575164-b6jhkrudbd0ribltergiuiafpb1vhjrr.apps.googleusercontent.com"
+              placeholder="458826575164-b6jhkrudbd8ribltergiuiafpb1vhjrr.apps.googleusercontent.com"
               className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 font-mono text-xs text-white focus:border-indigo-500 focus:outline-none"
             />
             <button
