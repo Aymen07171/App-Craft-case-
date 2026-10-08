@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: casecraft-studio
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: VITE_GOOGLE_CLIENT_ID
+        value: 458826575164-b6jhkrudbd8ribltergiuiafpb1vhjrr.apps.googleusercontent.com
+      - key: PRINTIFY_API_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
