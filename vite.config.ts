@@ -1,7 +1,40 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import fs from 'fs';
 import path from 'path';
 import {defineConfig} from 'vite';
+
+function firebaseAppletFallbackPlugin() {
+  return {
+    name: 'firebase-applet-fallback',
+    resolveId(id: string) {
+      if (id.includes('firebase-applet-config.json')) {
+        return '\0virtual:firebase-applet-config.json';
+      }
+      return null;
+    },
+    load(id: string) {
+      if (id === '\0virtual:firebase-applet-config.json') {
+        const configPath = path.resolve(import.meta.dirname, 'firebase-applet-config.json');
+        if (fs.existsSync(configPath)) {
+          try {
+            return `export default ${fs.readFileSync(configPath, 'utf-8')};`;
+          } catch (_) {}
+        }
+        return `export default {
+          apiKey: process.env.VITE_FIREBASE_API_KEY || "",
+          authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+          projectId: process.env.VITE_FIREBASE_PROJECT_ID || "",
+          storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+          messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+          appId: process.env.VITE_FIREBASE_APP_ID || "",
+          oAuthClientId: process.env.VITE_GOOGLE_CLIENT_ID || "458826575164-b6jhkrudbd8ribltergiuiafpb1vhjrr.apps.googleusercontent.com"
+        };`;
+      }
+      return null;
+    },
+  };
+}
 
 function printifyApiPlugin() {
   return {
@@ -11,7 +44,7 @@ function printifyApiPlugin() {
         const reqUrl = req.url || '';
         if (reqUrl === '/api/printify' || reqUrl.startsWith('/api/printify?')) {
           try {
-            const { handlePrintifyRequest } = await import('./src/server/printify');
+            const { handlePrintifyRequest } = await import('./src/server/printify.ts');
             const url = new URL(reqUrl, `http://${req.headers.host || 'localhost'}`);
             let body: any = undefined;
             if (req.method !== 'GET') {
@@ -58,7 +91,7 @@ function printifyApiPlugin() {
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss(), printifyApiPlugin()],
+    plugins: [react(), tailwindcss(), firebaseAppletFallbackPlugin(), printifyApiPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),

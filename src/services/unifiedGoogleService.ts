@@ -7,7 +7,7 @@
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
+import firebaseConfig, { USER_PROVIDED_CLIENT_ID } from './firebaseConfig';
 import { UnifiedProductRecord } from '../types/unifiedWorkflow';
 import { PinterestCsvRow, PINTEREST_CSV_HEADERS } from '../types/pinterest';
 
@@ -26,8 +26,7 @@ const getSafeAuth = () => {
 
 const auth = getSafeAuth();
 
-export const USER_PROVIDED_CLIENT_ID =
-  '458826575164-b6jhkrudbd8ribltergiuiafpb1vhjrr.apps.googleusercontent.com';
+export { USER_PROVIDED_CLIENT_ID };
 
 export const PROVISIONED_OAUTH_CLIENT_ID =
   (firebaseConfig.oAuthClientId &&

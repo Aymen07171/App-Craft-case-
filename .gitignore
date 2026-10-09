@@ -4,7 +4,6 @@ dist/
 server.js
 coverage/
 .netlify/
-firebase-applet-config.json
 .DS_Store
 *.log
 .env*
