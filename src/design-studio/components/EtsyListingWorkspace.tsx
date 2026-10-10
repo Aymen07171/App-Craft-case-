@@ -26,6 +26,11 @@ import {
   listingToSheetRow,
   nextProductId,
   PHONE_MODELS,
+  IPHONE_MODELS,
+  SAMSUNG_MODELS,
+  DEFAULT_PRINTIFY_VARIANT_MAP,
+  PRINTIFY_BLUEPRINT_CONFIGS,
+  PhoneModel,
   saveListingDrafts,
   saveListingSettings,
   validateListingDraft,
@@ -664,28 +669,201 @@ export const EtsyListingGenerator: React.FC<EtsyListingGeneratorProps> = ({ desi
           </section>
 
           <section>
-            <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-300">Printify configuration</h4>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-300">
+                  Printify Model Variants ({activeDraft.selectedModels.length} of {PHONE_MODELS.length} selected)
+                </h4>
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  Etsy listing will publish with customer selectable dropdown for each chosen device model.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => updateActiveDraft({ selectedModels: [...PHONE_MODELS] })}
+                  className="rounded bg-slate-800 px-2 py-1 text-slate-200 hover:bg-slate-700"
+                >
+                  Select All ({PHONE_MODELS.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateActiveDraft({
+                      selectedModels: Array.from(
+                        new Set([...activeDraft.selectedModels.filter((m) => !m.startsWith('iPhone')), ...IPHONE_MODELS])
+                      ),
+                    })
+                  }
+                  className="rounded bg-slate-800 px-2 py-1 text-sky-300 hover:bg-slate-700"
+                >
+                  All iPhones ({IPHONE_MODELS.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateActiveDraft({
+                      selectedModels: Array.from(
+                        new Set([...activeDraft.selectedModels.filter((m) => !m.startsWith('Samsung')), ...SAMSUNG_MODELS])
+                      ),
+                    })
+                  }
+                  className="rounded bg-slate-800 px-2 py-1 text-emerald-300 hover:bg-slate-700"
+                >
+                  All Samsung ({SAMSUNG_MODELS.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateActiveDraft({ selectedModels: [] })}
+                  className="rounded bg-slate-800 px-2 py-1 text-slate-400 hover:bg-slate-700"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-xs text-slate-300">Blueprint_ID<input value={activeDraft.blueprintId} onChange={(event) => updateActiveDraft({ blueprintId: event.target.value })} className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
               <label className="text-xs text-slate-300">Print_Provider_ID<input value={activeDraft.printProviderId} onChange={(event) => updateActiveDraft({ printProviderId: event.target.value })} className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
             </div>
-            <div className="mt-3 grid gap-x-4 gap-y-2 sm:grid-cols-2">
-              {PHONE_MODELS.map((model) => <label key={model} className="flex items-center gap-2 text-sm text-slate-300">
-                <input type="checkbox" checked={activeDraft.selectedModels.includes(model)} onChange={(event) => updateActiveDraft({ selectedModels: event.target.checked ? [...activeDraft.selectedModels, model] : activeDraft.selectedModels.filter((item) => item !== model) })} className="h-4 w-4 accent-amber-300" />
-                {model}<span className="ml-auto text-[11px] text-slate-500">{settings.variantIds[model] ? 'variant set' : 'configure ID'}</span>
-              </label>)}
+
+            {/* Apple iPhone Group */}
+            <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div className="mb-2 flex items-center justify-between border-b border-slate-800/80 pb-1.5">
+                <span className="text-xs font-semibold text-sky-300">Apple iPhone Models ({IPHONE_MODELS.filter((m) => activeDraft.selectedModels.includes(m)).length}/{IPHONE_MODELS.length})</span>
+                <span className="text-[10px] text-slate-500">iPhone 18 Pro Max down to iPhone 11</span>
+              </div>
+              <div className="grid max-h-56 gap-x-4 gap-y-1.5 overflow-y-auto pr-1 sm:grid-cols-2">
+                {IPHONE_MODELS.map((model) => (
+                  <label key={model} className="flex items-center gap-2 text-xs text-slate-300 hover:text-white">
+                    <input
+                      type="checkbox"
+                      checked={activeDraft.selectedModels.includes(model)}
+                      onChange={(event) =>
+                        updateActiveDraft({
+                          selectedModels: event.target.checked
+                            ? [...activeDraft.selectedModels, model]
+                            : activeDraft.selectedModels.filter((item) => item !== model),
+                        })
+                      }
+                      className="h-3.5 w-3.5 rounded accent-sky-400"
+                    />
+                    <span className="truncate">{model}</span>
+                    <span className="ml-auto font-mono text-[10px] text-slate-500">
+                      {settings.variantIds[model] ? `ID: ${settings.variantIds[model]}` : 'configure ID'}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Samsung Galaxy Group */}
+            <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div className="mb-2 flex items-center justify-between border-b border-slate-800/80 pb-1.5">
+                <span className="text-xs font-semibold text-emerald-300">Samsung Galaxy Models ({SAMSUNG_MODELS.filter((m) => activeDraft.selectedModels.includes(m)).length}/{SAMSUNG_MODELS.length})</span>
+                <span className="text-[10px] text-slate-500">Galaxy S26 down to Galaxy S21</span>
+              </div>
+              <div className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+                {SAMSUNG_MODELS.map((model) => (
+                  <label key={model} className="flex items-center gap-2 text-xs text-slate-300 hover:text-white">
+                    <input
+                      type="checkbox"
+                      checked={activeDraft.selectedModels.includes(model)}
+                      onChange={(event) =>
+                        updateActiveDraft({
+                          selectedModels: event.target.checked
+                            ? [...activeDraft.selectedModels, model]
+                            : activeDraft.selectedModels.filter((item) => item !== model),
+                        })
+                      }
+                      className="h-3.5 w-3.5 rounded accent-emerald-400"
+                    />
+                    <span className="truncate">{model}</span>
+                    <span className="ml-auto font-mono text-[10px] text-slate-500">
+                      {settings.variantIds[model] ? `ID: ${settings.variantIds[model]}` : 'configure ID'}
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
           </section>
 
           <details className="border-t border-slate-800 pt-4">
-            <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-300"><Settings2 className="h-4 w-4" /> Listing settings and default variants</summary>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-slate-300">
+              <span className="flex items-center gap-2"><Settings2 className="h-4 w-4" /> Listing settings and default Printify variants</span>
+              <div className="flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                {Object.entries(PRINTIFY_BLUEPRINT_CONFIGS).map(([cKey, cCfg]) => (
+                  <button
+                    key={cKey}
+                    type="button"
+                    onClick={() => {
+                      updateSettings({
+                        blueprintId: cCfg.id,
+                        printProviderId: cCfg.printProviderId,
+                        variantIds: { ...cCfg.variantMap },
+                      });
+                      if (activeDraft) {
+                        updateActiveDraft({
+                          blueprintId: cCfg.id,
+                          printProviderId: cCfg.printProviderId,
+                        });
+                      }
+                    }}
+                    className={`rounded px-2 py-0.5 text-[10px] font-normal normal-case border transition cursor-pointer ${
+                      settings.blueprintId === cCfg.id
+                        ? 'bg-indigo-600 border-indigo-500 text-white shadow-sm'
+                        : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    {cCfg.name.split('(')[0].trim()} (BP {cCfg.id})
+                  </button>
+                ))}
+              </div>
+            </summary>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <label className="text-xs text-slate-300">Default selling price<input type="number" min="0.01" step="0.01" value={settings.defaultPrice} onChange={(event) => updateSettings({ defaultPrice: event.target.value })} className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
               <label className="text-xs text-slate-300">Default Blueprint_ID<input value={settings.blueprintId} onChange={(event) => updateSettings({ blueprintId: event.target.value })} className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
-              <label className="text-xs text-slate-300 sm:col-span-2">Default Print_Provider_ID<input value={settings.printProviderId} onChange={(event) => updateSettings({ printProviderId: event.target.value })} className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
+              <label className="text-xs text-slate-300">Default Print_Provider_ID<input value={settings.printProviderId} onChange={(event) => updateSettings({ printProviderId: event.target.value })} className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
             </div>
-            <div className="mt-4 grid gap-x-4 gap-y-2 sm:grid-cols-2">
-              {PHONE_MODELS.map((model) => <label key={model} className="text-xs text-slate-300">{model} Variant_ID<input value={settings.variantIds[model] || ''} onChange={(event) => updateSettings({ variantIds: { ...settings.variantIds, [model]: event.target.value } })} className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>)}
+            <div className="mt-4 max-h-64 overflow-y-auto space-y-3 pr-1">
+              <div>
+                <p className="text-[11px] font-semibold text-sky-400 mb-1">Apple iPhone Variant IDs</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {IPHONE_MODELS.map((model) => (
+                    <label key={model} className="text-[11px] text-slate-300">
+                      {model}
+                      <input
+                        value={settings.variantIds[model] || ''}
+                        onChange={(event) =>
+                          updateSettings({
+                            variantIds: { ...settings.variantIds, [model]: event.target.value },
+                          })
+                        }
+                        className="mt-0.5 w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1 text-xs text-white"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-emerald-400 mb-1">Samsung Galaxy Variant IDs</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {SAMSUNG_MODELS.map((model) => (
+                    <label key={model} className="text-[11px] text-slate-300">
+                      {model}
+                      <input
+                        value={settings.variantIds[model] || ''}
+                        onChange={(event) =>
+                          updateSettings({
+                            variantIds: { ...settings.variantIds, [model]: event.target.value },
+                          })
+                        }
+                        className="mt-0.5 w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1 text-xs text-white"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           </details>
 

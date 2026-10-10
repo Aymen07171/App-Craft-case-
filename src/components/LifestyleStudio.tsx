@@ -13,9 +13,18 @@ import {
   Sliders,
   Eye,
   Wand2,
+  Search,
+  CheckSquare,
+  Square,
+  PackageCheck,
 } from 'lucide-react';
 import { GeneratedDesign, GeneratedLifestyleMockup, CaseType } from '../types';
-import { PRINTIFY_TEMPLATES, PrintifyTemplateRef } from '../data/printifyReferences';
+import {
+  PRINTIFY_TEMPLATES,
+  PrintifyTemplateRef,
+  getPrintAreaForModel,
+  getPrintCutoutDescription,
+} from '../data/printifyReferences';
 import { LIFESTYLE_SCENARIOS } from '../data/lifestyleScenarios';
 import { CASE_TYPE_OPTIONS } from '../data/presets';
 import { generateProductMockupCanvas, triggerDownload } from '../utils/exportMockup';
@@ -29,25 +38,36 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
   activeDesign,
   onNavigateToGallery,
 }) => {
-  // Brand Filter
+  // Brand Filter & Model Search
   const [selectedBrand, setSelectedBrand] = useState<'all' | 'apple' | 'samsung'>('apple');
+  const [modelSearch, setModelSearch] = useState<string>('');
 
-  // Selected Reference Model
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('iphone-15-pro');
+  // Mode: Single vs Batch Catalog Generation
+  const [isBatchMode, setIsBatchMode] = useState<boolean>(false);
+  const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>([
+    'iphone-17-air',
+    'iphone-18-pro-max',
+    'iphone-17-pro-max',
+    'samsung-s26-ultra',
+    'samsung-s25-ultra',
+  ]);
+
+  // Selected Reference Model (Single mode)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('iphone-17-air');
   const activeTemplate =
     PRINTIFY_TEMPLATES.find((t) => t.id === selectedTemplateId) || PRINTIFY_TEMPLATES[0];
 
   // Selected Case Construction
   const [selectedCaseType, setSelectedCaseType] = useState<CaseType>('tough');
   const activeCaseOption =
-    CASE_TYPE_OPTIONS.find((c) => c.id === selectedCaseType) || CASE_TYPE_OPTIONS[2];
+    CASE_TYPE_OPTIONS.find((c) => c.id === selectedCaseType) || CASE_TYPE_OPTIONS[0];
 
   // User-Controlled Scene Prompt
   const [scenePrompt, setScenePrompt] = useState<string>(
     'A young adult standing outdoors talking to a friend while casually holding their phone in one hand. The back of the phone is facing the camera and clearly shows the custom phone case design.'
   );
 
-  // Variations Count (1 or 4)
+  // Variations Count (1 or 4 for single mode)
   const [variationCount, setVariationCount] = useState<number>(1);
 
   // Generation status
@@ -60,8 +80,16 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
 
   // Filter templates
   const filteredTemplates = PRINTIFY_TEMPLATES.filter((t) => {
-    if (selectedBrand === 'all') return true;
-    return t.brand === selectedBrand;
+    if (selectedBrand !== 'all' && t.brand !== selectedBrand) return false;
+    if (modelSearch.trim()) {
+      const q = modelSearch.toLowerCase().trim();
+      return (
+        t.modelName.toLowerCase().includes(q) ||
+        t.id.toLowerCase().includes(q) ||
+        t.cameraCutout.type.toLowerCase().includes(q)
+      );
+    }
+    return true;
   });
 
   // Handle Preset Scenario Selection
@@ -75,13 +103,40 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
     setScenePrompt(LIFESTYLE_SCENARIOS[randomIndex].prompt);
   };
 
-  // Generate Stage 1: Build the clean reference product mockup
+  // Toggle Batch Selection
+  const handleToggleBatchId = (id: string) => {
+    setSelectedBatchIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  // Quick Batch Presets
+  const handleSelectBatchPreset = (preset: 'essentials' | 'iphones' | 'samsung' | 'filtered') => {
+    if (preset === 'essentials') {
+      setSelectedBatchIds([
+        'iphone-17-air',
+        'iphone-18-pro-max',
+        'iphone-17-pro-max',
+        'iphone-16-pro-max',
+        'samsung-s26-ultra',
+        'samsung-s25-ultra',
+        'samsung-s24-ultra',
+      ]);
+    } else if (preset === 'iphones') {
+      setSelectedBatchIds(PRINTIFY_TEMPLATES.filter((t) => t.brand === 'apple').map((t) => t.id));
+    } else if (preset === 'samsung') {
+      setSelectedBatchIds(PRINTIFY_TEMPLATES.filter((t) => t.brand === 'samsung').map((t) => t.id));
+    } else if (preset === 'filtered') {
+      setSelectedBatchIds(filteredTemplates.map((t) => t.id));
+    }
+  };
+
+  // Generate Stage 1: Build the clean reference product mockup using exact device & case
   const generateBaseReferenceMockup = async (template: PrintifyTemplateRef): Promise<string> => {
-    const device = template.brand === 'apple' ? 'iphone-16-pro' : 'samsung-s25-ultra';
     return await generateProductMockupCanvas(
       {
         artworkUrl: activeDesign.imageUrl,
-        device,
+        device: template.id,
         finish: activeCaseOption.finish,
         frameColorId: 'obsidian-black',
         showMagsafe: false,
@@ -96,56 +151,84 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
   const handleGenerateLifestyle = async () => {
     setIsGenerating(true);
     setGenerationError(null);
-    setGenerationProgress('Reconstructing exact physical case geometry from Printify template...');
+
+    const templatesToGenerate: PrintifyTemplateRef[] = isBatchMode
+      ? PRINTIFY_TEMPLATES.filter((t) => selectedBatchIds.includes(t.id))
+      : [activeTemplate];
+
+    if (templatesToGenerate.length === 0) {
+      setGenerationError('Please select at least one phone case model to generate mockups.');
+      setIsGenerating(false);
+      return;
+    }
 
     try {
-      // Stage 1: Synthesize physical product reference with user artwork
-      const baseProductMockup = await generateBaseReferenceMockup(activeTemplate);
-
       const generatedItems: GeneratedLifestyleMockup[] = [];
 
-      for (let i = 1; i <= variationCount; i++) {
+      for (let tIndex = 0; tIndex < templatesToGenerate.length; tIndex++) {
+        const targetTemplate = templatesToGenerate[tIndex];
+        const targetDims = getPrintAreaForModel(targetTemplate.modelName, selectedCaseType);
+
+        const currentLabel = `${targetTemplate.modelName} (${activeCaseOption.name})`;
         setGenerationProgress(
-          variationCount > 1
-            ? `Generating realistic lifestyle variation ${i} of ${variationCount}...`
-            : 'Synthesizing photorealistic scene & natural hand interaction...'
+          templatesToGenerate.length > 1
+            ? `Generating catalog variant ${tIndex + 1} of ${templatesToGenerate.length}: ${currentLabel}...`
+            : `Synthesizing exact physical geometry for ${currentLabel}...`
         );
 
-        const response = await fetch('/api/generate-lifestyle-scene', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            designImageUrl: activeDesign.imageUrl,
-            productMockupUrl: baseProductMockup,
-            userScenePrompt: scenePrompt,
-            modelName: activeTemplate.modelName,
-            brand: activeTemplate.brand,
-            caseType: activeCaseOption.name,
-            dimensions: activeTemplate.dimensions,
-            cameraCutoutDesc: activeTemplate.cameraCutout.description,
+        // Stage 1: Synthesize physical product reference with user artwork
+        const baseProductMockup = await generateBaseReferenceMockup(targetTemplate);
+
+        const loopCount = isBatchMode ? 1 : variationCount;
+
+        for (let i = 1; i <= loopCount; i++) {
+          if (!isBatchMode && variationCount > 1) {
+            setGenerationProgress(
+              `Generating realistic lifestyle variation ${i} of ${variationCount} for ${targetTemplate.modelName}...`
+            );
+          }
+
+          const response = await fetch('/api/generate-lifestyle-scene', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              designImageUrl: activeDesign.imageUrl,
+              productMockupUrl: baseProductMockup,
+              userScenePrompt: scenePrompt,
+              modelName: targetTemplate.modelName,
+              brand: targetTemplate.brand,
+              caseType: activeCaseOption.name,
+              dimensions: {
+                pixelWidth: targetDims.pixelWidth,
+                pixelHeight: targetDims.pixelHeight,
+                mmWidth: targetTemplate.dimensions.mmWidth,
+                mmHeight: targetTemplate.dimensions.mmHeight,
+              },
+              cameraCutoutDesc: targetTemplate.cameraCutout.description,
+              variationIndex: i,
+            }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok || !data.imageUrl) {
+            throw new Error(data.error || `Failed to generate scene for ${targetTemplate.modelName}`);
+          }
+
+          generatedItems.push({
+            id: `lifestyle-${Date.now()}-${tIndex}-${i}`,
+            sceneTitle: `${targetTemplate.modelName} ${activeCaseOption.name} Lifestyle`,
+            userPrompt: scenePrompt,
+            modelName: targetTemplate.modelName,
+            brand: targetTemplate.brand,
+            caseType: selectedCaseType,
+            imageUrl: data.imageUrl,
+            designId: activeDesign.id,
+            designTitle: activeDesign.title,
+            createdAt: Date.now(),
             variationIndex: i,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok || !data.imageUrl) {
-          throw new Error(data.error || 'Failed to generate lifestyle scene');
+          });
         }
-
-        generatedItems.push({
-          id: `lifestyle-${Date.now()}-${i}`,
-          sceneTitle: `${activeTemplate.modelName} in Lifestyle Scene`,
-          userPrompt: scenePrompt,
-          modelName: activeTemplate.modelName,
-          brand: activeTemplate.brand,
-          caseType: selectedCaseType,
-          imageUrl: data.imageUrl,
-          designId: activeDesign.id,
-          designTitle: activeDesign.title,
-          createdAt: Date.now(),
-          variationIndex: i,
-        });
       }
 
       setResults((prev) => [...generatedItems, ...prev]);
@@ -159,7 +242,7 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
         errMsg.includes('API key')
       ) {
         errMsg =
-          'Authentication required: Please ensure a valid Gemini API key is selected in the AI Studio Secrets panel.';
+          'Authentication required: Please ensure a valid Gemini API key is configured in your environment.';
       }
       setGenerationError(errMsg);
     } finally {
@@ -167,6 +250,20 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
       setGenerationProgress('');
     }
   };
+
+  // Download All Generated Mockups
+  const handleDownloadAll = () => {
+    results.forEach((item, index) => {
+      setTimeout(() => {
+        triggerDownload(
+          item.imageUrl,
+          `${item.modelName.replace(/\s+/g, '_')}_${item.caseType}_lifestyle_${Date.now()}.png`
+        );
+      }, index * 200);
+    });
+  };
+
+  const activePrintArea = getPrintAreaForModel(activeTemplate.modelName, selectedCaseType);
 
   return (
     <div className="space-y-8">
@@ -178,19 +275,18 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
           <div>
             <div className="flex items-center gap-2 mb-1.5">
               <span className="text-xs font-semibold uppercase tracking-wider text-sky-400 bg-sky-950/80 px-2.5 py-0.5 rounded border border-sky-800/60 flex items-center gap-1">
-                <Camera className="w-3 h-3" /> Printify Reference Architecture
+                <Camera className="w-3 h-3" /> Printify Catalog Engine
               </span>
               <span className="text-xs text-emerald-400 font-medium">
-                Design & Geometry Fixed • Environment Creative
+                {PRINTIFY_TEMPLATES.length} Device Models • {CASE_TYPE_OPTIONS.length} Case Styles
               </span>
             </div>
             <h1 className="text-2xl font-bold text-white tracking-tight">
-              AI Lifestyle Scene Generator
+              Phone Case Catalog & Lifestyle Studio
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
-              Transforms your exact uploaded artwork and authentic Printify phone case geometry into
-              a photorealistic lifestyle scene. The phone is positioned naturally in hand with the
-              back of the case and design clearly visible.
+              Synthesizes authentic Printify camera cutout placements, exact print areas (e.g. 1311 × 2220 px),
+              and commercial lifestyle mockups for iPhone and Samsung devices across all case styles (Tough, Slim, Clear, Wallet, Eco-friendly).
             </p>
           </div>
 
@@ -224,51 +320,130 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
                 <span className="w-4 h-4 rounded-full bg-sky-600 text-white flex items-center justify-center text-[10px] font-bold">
                   1
                 </span>
-                Printify Reference Product
+                Printify Models ({filteredTemplates.length})
               </h3>
-              <div className="flex rounded-lg bg-slate-950 p-0.5 border border-slate-800">
+
+              {/* Mode Toggle: Single vs Batch */}
+              <div className="flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-xs">
                 <button
-                  onClick={() => setSelectedBrand('apple')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition cursor-pointer ${
-                    selectedBrand === 'apple'
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-white'
+                  onClick={() => setIsBatchMode(false)}
+                  className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
+                    !isBatchMode ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400'
                   }`}
                 >
-                  iPhone
+                  Single
                 </button>
                 <button
-                  onClick={() => setSelectedBrand('samsung')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition cursor-pointer ${
-                    selectedBrand === 'samsung'
-                      ? 'bg-sky-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-white'
+                  onClick={() => setIsBatchMode(true)}
+                  className={`px-2 py-0.5 rounded font-medium transition cursor-pointer flex items-center gap-1 ${
+                    isBatchMode ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-400'
                   }`}
                 >
-                  Samsung
-                </button>
-                <button
-                  onClick={() => setSelectedBrand('all')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition cursor-pointer ${
-                    selectedBrand === 'all'
-                      ? 'bg-slate-700 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  All
+                  <PackageCheck className="w-3 h-3" /> Batch Pack
                 </button>
               </div>
+            </div>
+
+            {/* Brand Filter & Search Input */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="flex rounded-lg bg-slate-950 p-0.5 border border-slate-800">
+                  <button
+                    onClick={() => setSelectedBrand('apple')}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition cursor-pointer ${
+                      selectedBrand === 'apple'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    iPhone
+                  </button>
+                  <button
+                    onClick={() => setSelectedBrand('samsung')}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition cursor-pointer ${
+                      selectedBrand === 'samsung'
+                        ? 'bg-sky-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Samsung
+                  </button>
+                  <button
+                    onClick={() => setSelectedBrand('all')}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition cursor-pointer ${
+                      selectedBrand === 'all'
+                        ? 'bg-slate-700 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    All ({PRINTIFY_TEMPLATES.length})
+                  </button>
+                </div>
+
+                <div className="relative flex-1">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={modelSearch}
+                    onChange={(e) => setModelSearch(e.target.value)}
+                    placeholder="Search Air, S26, 17 Pro..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+              </div>
+
+              {/* Batch Quick Presets if Batch Mode */}
+              {isBatchMode && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px]">
+                  <span className="text-slate-400">Quick batch:</span>
+                  <button
+                    onClick={() => handleSelectBatchPreset('essentials')}
+                    className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-sky-400 hover:bg-slate-800 cursor-pointer"
+                  >
+                    Top 7 Flagships
+                  </button>
+                  <button
+                    onClick={() => handleSelectBatchPreset('iphones')}
+                    className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-indigo-400 hover:bg-slate-800 cursor-pointer"
+                  >
+                    All iPhones
+                  </button>
+                  <button
+                    onClick={() => handleSelectBatchPreset('samsung')}
+                    className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-emerald-400 hover:bg-slate-800 cursor-pointer"
+                  >
+                    All Samsung
+                  </button>
+                  <button
+                    onClick={() => handleSelectBatchPreset('filtered')}
+                    className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300 hover:bg-slate-800 cursor-pointer"
+                  >
+                    Select Filtered ({filteredTemplates.length})
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Template Grid Selector */}
             <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
               {filteredTemplates.map((tpl) => {
-                const isSelected = tpl.id === selectedTemplateId;
+                const isSelected = isBatchMode
+                  ? selectedBatchIds.includes(tpl.id)
+                  : tpl.id === selectedTemplateId;
+
+                const modelDims = getPrintAreaForModel(tpl.modelName, selectedCaseType);
+
                 return (
                   <button
                     key={tpl.id}
-                    onClick={() => setSelectedTemplateId(tpl.id)}
-                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                    onClick={() => {
+                      if (isBatchMode) {
+                        handleToggleBatchId(tpl.id);
+                      } else {
+                        setSelectedTemplateId(tpl.id);
+                      }
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer relative ${
                       isSelected
                         ? 'bg-sky-950/80 border-sky-500 ring-1 ring-sky-500'
                         : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 hover:bg-slate-900/60'
@@ -278,13 +453,17 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
                       <span className="text-[10px] font-semibold text-sky-400 uppercase">
                         {tpl.brand.toUpperCase()}
                       </span>
-                      {isSelected && <Check className="w-3.5 h-3.5 text-sky-400" />}
+                      {isSelected ? (
+                        <Check className="w-3.5 h-3.5 text-sky-400" />
+                      ) : isBatchMode ? (
+                        <Square className="w-3.5 h-3.5 text-slate-600" />
+                      ) : null}
                     </div>
                     <h4 className="text-xs font-semibold text-white leading-tight">
                       {tpl.modelName}
                     </h4>
                     <p className="text-[10px] text-slate-400 mt-1 font-mono">
-                      {tpl.dimensions.pixelWidth}x{tpl.dimensions.pixelHeight}px
+                      {modelDims.pixelWidth} × {modelDims.pixelHeight} px
                     </p>
                   </button>
                 );
@@ -294,13 +473,20 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
             {/* Active Model Blueprint Spec Info */}
             <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400 space-y-1">
               <div className="flex items-center justify-between text-slate-300">
-                <span className="font-semibold">{activeTemplate.modelName} Blueprint</span>
-                <span className="text-sky-400 font-mono">
-                  {activeTemplate.dimensions.mmWidth}mm × {activeTemplate.dimensions.mmHeight}mm
+                <span className="font-semibold text-white">
+                  {isBatchMode
+                    ? `${selectedBatchIds.length} Models Selected for Batch`
+                    : `${activeTemplate.modelName} Printify Spec`}
+                </span>
+                <span className="text-sky-400 font-mono font-semibold">
+                  {activePrintArea.pixelWidth} × {activePrintArea.pixelHeight} px
                 </span>
               </div>
               <p className="text-slate-400 line-clamp-2">
-                Camera cutout: {activeTemplate.cameraCutout.description}
+                Cutout: {activeTemplate.cameraCutout.description}
+              </p>
+              <p className="text-[10px] text-amber-400/90 font-medium">
+                Safe Zone: Top 35% safe margin to prevent camera cutout occlusion of characters.
               </p>
             </div>
           </div>
@@ -311,24 +497,27 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
               <span className="w-4 h-4 rounded-full bg-sky-600 text-white flex items-center justify-center text-[10px] font-bold">
                 2
               </span>
-              Case Construction
+              Case Construction Style
             </h3>
-            <div className="grid grid-cols-3 gap-2">
-              {CASE_TYPE_OPTIONS.slice(0, 3).map((opt) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {CASE_TYPE_OPTIONS.map((opt) => (
                 <button
                   key={opt.id}
                   onClick={() => setSelectedCaseType(opt.id)}
-                  className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
+                  className={`p-2 rounded-xl border text-left transition cursor-pointer ${
                     selectedCaseType === opt.id
-                      ? 'bg-indigo-950/80 border-indigo-500 text-white'
-                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white'
+                      ? 'bg-indigo-950/80 border-indigo-500 ring-1 ring-indigo-500 text-white'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
                   }`}
                 >
-                  <span className="text-xs font-semibold block">{opt.name}</span>
-                  <span className="text-[10px] text-indigo-400">{opt.badge}</span>
+                  <span className="text-xs font-semibold block text-white">{opt.name}</span>
+                  <span className="text-[10px] text-indigo-400 line-clamp-1">{opt.badge}</span>
                 </button>
               ))}
             </div>
+            <p className="text-[11px] text-slate-400 italic">
+              {activeCaseOption.description}
+            </p>
           </div>
 
           {/* Step 3: Scene Description & Quick Scenarios */}
@@ -374,28 +563,30 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
               </div>
             </div>
 
-            {/* Variations Switch */}
-            <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
-              <span className="text-slate-300">Variations to Generate</span>
-              <div className="flex rounded-lg bg-slate-950 p-0.5 border border-slate-800">
-                <button
-                  onClick={() => setVariationCount(1)}
-                  className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
-                    variationCount === 1 ? 'bg-indigo-600 text-white' : 'text-slate-400'
-                  }`}
-                >
-                  1 Image
-                </button>
-                <button
-                  onClick={() => setVariationCount(4)}
-                  className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
-                    variationCount === 4 ? 'bg-indigo-600 text-white' : 'text-slate-400'
-                  }`}
-                >
-                  4 Variations
-                </button>
+            {/* Variations Switch (Only for single mode) */}
+            {!isBatchMode && (
+              <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
+                <span className="text-slate-300">Variations to Generate</span>
+                <div className="flex rounded-lg bg-slate-950 p-0.5 border border-slate-800">
+                  <button
+                    onClick={() => setVariationCount(1)}
+                    className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
+                      variationCount === 1 ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                    }`}
+                  >
+                    1 Image
+                  </button>
+                  <button
+                    onClick={() => setVariationCount(4)}
+                    className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
+                      variationCount === 4 ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                    }`}
+                  >
+                    4 Variations
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Error Display */}
             {generationError && (
@@ -418,12 +609,21 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
               {isGenerating ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>{generationProgress || 'Synthesizing Lifestyle Scene...'}</span>
+                  <span className="truncate">{generationProgress || 'Synthesizing Mockup...'}</span>
+                </>
+              ) : isBatchMode ? (
+                <>
+                  <PackageCheck className="w-4 h-4" />
+                  <span>
+                    Generate Full Catalog Pack ({selectedBatchIds.length} Variants • {activeCaseOption.name})
+                  </span>
                 </>
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  <span>Generate Lifestyle Mockup ({activeTemplate.modelName})</span>
+                  <span>
+                    Generate Lifestyle Mockup ({activeTemplate.modelName} • {activeCaseOption.name})
+                  </span>
                 </>
               )}
             </button>
@@ -435,11 +635,22 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               <Camera className="w-4 h-4 text-sky-400" />
-              Generated Lifestyle Scenes
+              Publishing Mockup Catalog
             </h2>
-            <span className="text-xs text-slate-400">
-              {results.length} scene{results.length === 1 ? '' : 's'} generated
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-400">
+                {results.length} scene{results.length === 1 ? '' : 's'} ready
+              </span>
+              {results.length > 0 && (
+                <button
+                  onClick={handleDownloadAll}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download All</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {results.length === 0 ? (
@@ -449,27 +660,27 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
                 <Camera className="w-8 h-8" />
               </div>
               <div className="max-w-md mx-auto">
-                <h3 className="text-sm font-bold text-white">No Lifestyle Scenes Generated Yet</h3>
+                <h3 className="text-sm font-bold text-white">No Mockup Catalog Generated Yet</h3>
                 <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
-                  Select your Printify phone case reference model on the left, describe your desired
-                  scenario, and click <strong>Generate Lifestyle Mockup</strong>. The AI will place
-                  your exact design inside a realistic scene with authentic hand grip and lighting.
+                  Select your Printify phone case models (from iPhone 18 down to Samsung S26/S21),
+                  choose your case style (Tough, Slim, Clear, Wallet, Eco-friendly), and generate
+                  lifestyle scenes with your artwork accurately applied to the case backplate.
                 </p>
               </div>
 
               {/* Sample Workflow Checklist */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left pt-4 max-w-lg mx-auto text-[11px] text-slate-300">
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-sky-400 font-semibold block mb-0.5">Stage 1</span>
-                  Product geometry & artwork are reconstructed.
+                  <span className="text-sky-400 font-semibold block mb-0.5">Printify Template</span>
+                  Exact print area size & camera opening geometry respected.
                 </div>
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-indigo-400 font-semibold block mb-0.5">Stage 2</span>
-                  Human interaction, pose & environment synthesized.
+                  <span className="text-indigo-400 font-semibold block mb-0.5">Top Safe-Zone</span>
+                  Protects character faces & artwork below top 35% cutout.
                 </div>
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-emerald-400 font-semibold block mb-0.5">Stage 3</span>
-                  Case back & design clearly displayed facing camera.
+                  <span className="text-emerald-400 font-semibold block mb-0.5">Publish Ready</span>
+                  Complete gallery ready for Printify and Etsy store export.
                 </div>
               </div>
             </div>
@@ -489,7 +700,7 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-slate-800 text-[10px] font-semibold text-sky-400">
-                      {item.modelName}
+                      {item.modelName} • {item.caseType}
                     </div>
                   </div>
 
@@ -507,7 +718,12 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
                         {new Date(item.createdAt).toLocaleTimeString()}
                       </span>
                       <button
-                        onClick={() => triggerDownload(item.imageUrl, `${item.modelName}-lifestyle-${Date.now()}.png`)}
+                        onClick={() =>
+                          triggerDownload(
+                            item.imageUrl,
+                            `${item.modelName.replace(/\s+/g, '_')}-${item.caseType}-lifestyle-${Date.now()}.png`
+                          )
+                        }
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow-md shadow-sky-950/40 transition cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5" />

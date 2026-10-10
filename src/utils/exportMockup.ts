@@ -1,5 +1,6 @@
 import { DeviceType, CaseFinish, FrameColor } from '../types';
 import { FRAME_COLORS } from '../data/presets';
+import { getPrintifyTemplate } from '../data/printifyReferences';
 
 interface RenderProductMockupOptions {
   artworkUrl: string;
@@ -62,29 +63,66 @@ export async function drawPhoneCaseProduct(
   showMagsafe = false,
   glossIntensity = 75
 ) {
-  const isIphone = device === 'iphone-16-pro';
-  const aspectRatio = isIphone ? 574 / 280 : 588 / 280;
+  const template = getPrintifyTemplate(device);
+  const isApple = template ? template.brand === 'apple' : !device.toLowerCase().includes('samsung');
+  const aspectRatio = template
+    ? template.dimensions.pixelHeight / template.dimensions.pixelWidth
+    : isApple
+      ? 574 / 280
+      : 588 / 280;
   const targetHeight = targetWidth * aspectRatio;
-  const borderRadius = isIphone ? targetWidth * 0.16 : targetWidth * 0.05;
+
+  const curvature = template?.cameraCutout.cornerCurvature || (isApple ? 'round' : 'sharp');
+  const borderRadius =
+    curvature === 'round'
+      ? targetWidth * 0.16
+      : curvature === 'tight'
+        ? targetWidth * 0.09
+        : targetWidth * 0.045;
+
   const frameColor: FrameColor =
     FRAME_COLORS.find((c) => c.id === frameColorId) || FRAME_COLORS[0];
 
   ctx.save();
   ctx.translate(x, y);
 
-  // Outer Phone Frame
+  // 1. Outer Phone Frame
   ctx.save();
   roundRect(ctx, 0, 0, targetWidth, targetHeight, borderRadius);
-  ctx.fillStyle = frameColor.hex;
-  ctx.fill();
-  ctx.lineWidth = 3.5;
-  ctx.strokeStyle = frameColor.accentHex;
-  ctx.stroke();
+  if (finish === 'clear-hybrid') {
+    // Semi-transparent frosted TPU bumper
+    ctx.fillStyle = 'rgba(230, 235, 245, 0.45)';
+    ctx.fill();
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.stroke();
+  } else if (finish === 'wallet-leather') {
+    // Rich faux leather outer shell
+    ctx.fillStyle = '#1c1815';
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#3d342c';
+    ctx.stroke();
+  } else if (finish === 'eco-matte') {
+    // Plant composite wheat straw matte body
+    ctx.fillStyle = '#222822';
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#3d473d';
+    ctx.stroke();
+  } else {
+    // Standard polycarbonate / tough frame
+    ctx.fillStyle = frameColor.hex;
+    ctx.fill();
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = frameColor.accentHex;
+    ctx.stroke();
+  }
 
-  // Armor Corner Bumpers
+  // 2. Armor Corner Bumpers (Tough Cases)
   if (finish === 'tough-armor') {
     const bumperSize = targetWidth * 0.12;
-    ctx.fillStyle = 'rgba(15, 17, 23, 0.9)';
+    ctx.fillStyle = 'rgba(12, 14, 18, 0.95)';
     roundRect(ctx, 0, 0, bumperSize, bumperSize, borderRadius * 0.8);
     ctx.fill();
     roundRect(ctx, targetWidth - bumperSize, 0, bumperSize, bumperSize, borderRadius * 0.8);
@@ -95,8 +133,8 @@ export async function drawPhoneCaseProduct(
     ctx.fill();
   }
 
-  // Clip for inner backplate and artwork
-  const innerInset = finish === 'clear-hybrid' ? 6 : 3;
+  // 3. Clip for inner backplate and artwork
+  const innerInset = finish === 'clear-hybrid' ? 8 : finish === 'wallet-leather' ? 4 : 3;
   roundRect(
     ctx,
     innerInset,
@@ -108,10 +146,10 @@ export async function drawPhoneCaseProduct(
   ctx.clip();
 
   // Background for backplate
-  ctx.fillStyle = '#0a0a0c';
+  ctx.fillStyle = finish === 'clear-hybrid' ? '#0f1115' : '#0a0a0c';
   ctx.fillRect(0, 0, targetWidth, targetHeight);
 
-  // Draw Artwork covering the case back
+  // 4. Draw Artwork covering the case back
   const artRatio = artworkImg.width / artworkImg.height;
   const caseRatio = targetWidth / targetHeight;
   let sWidth = artworkImg.width;
@@ -139,13 +177,50 @@ export async function drawPhoneCaseProduct(
     targetHeight - innerInset * 2
   );
 
-  // Clear Hybrid translucency overlay
+  // 5. Special Case Overlays
   if (finish === 'clear-hybrid') {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+    // Frosted clear rim reflection & glass sheen
+    const glassGrad = ctx.createLinearGradient(0, 0, targetWidth, targetHeight);
+    glassGrad.addColorStop(0, 'rgba(255, 255, 255, 0.18)');
+    glassGrad.addColorStop(0.3, 'rgba(255, 255, 255, 0.03)');
+    glassGrad.addColorStop(0.7, 'rgba(255, 255, 255, 0)');
+    glassGrad.addColorStop(1, 'rgba(255, 255, 255, 0.12)');
+    ctx.fillStyle = glassGrad;
     ctx.fillRect(0, 0, targetWidth, targetHeight);
+  } else if (finish === 'wallet-leather') {
+    // Leather folio stitch seam on left spine
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(targetWidth * 0.12, 0);
+    ctx.lineTo(targetWidth * 0.12, targetHeight);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+
+    // Spine crease shadow
+    const spineGrad = ctx.createLinearGradient(0, 0, targetWidth * 0.16, 0);
+    spineGrad.addColorStop(0, 'rgba(0, 0, 0, 0.4)');
+    spineGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.15)');
+    spineGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = spineGrad;
+    ctx.fillRect(0, 0, targetWidth * 0.16, targetHeight);
+    ctx.restore();
+  } else if (finish === 'eco-matte') {
+    // Organic speckled wheat straw fibers
+    ctx.save();
+    ctx.fillStyle = 'rgba(235, 225, 205, 0.07)';
+    for (let i = 0; i < 40; i++) {
+      const rx = (Math.sin(i * 12.3) * 0.5 + 0.5) * targetWidth;
+      const ry = (Math.cos(i * 17.8) * 0.5 + 0.5) * targetHeight;
+      const rw = 2 + (i % 3);
+      const rh = 1.5;
+      ctx.fillRect(rx, ry, rw, rh);
+    }
+    ctx.restore();
   }
 
-  // MagSafe Ring
+  // 6. MagSafe Ring
   if (showMagsafe) {
     ctx.save();
     ctx.beginPath();
@@ -168,7 +243,7 @@ export async function drawPhoneCaseProduct(
     ctx.restore();
   }
 
-  // Specular Gloss or Velvet Matte Sheen
+  // 7. Specular Gloss or Velvet Matte Sheen
   if (finish === 'liquid-gloss') {
     const glossGrad = ctx.createLinearGradient(0, 0, targetWidth, targetHeight);
     const intensity = (glossIntensity / 100) * 0.55;
@@ -181,7 +256,7 @@ export async function drawPhoneCaseProduct(
 
     ctx.fillStyle = glossGrad;
     ctx.fillRect(0, 0, targetWidth, targetHeight);
-  } else if (finish === 'velvet-matte') {
+  } else if (finish === 'velvet-matte' || finish === 'eco-matte') {
     const matteGrad = ctx.createRadialGradient(
       targetWidth * 0.5,
       targetHeight * 0.3,
@@ -210,9 +285,41 @@ export async function drawPhoneCaseProduct(
   ctx.stroke();
   ctx.restore(); // restore clip
 
-  // ----------------- CAMERA CUTOUT RENDERING -----------------
-  if (isIphone) {
-    // iPhone 16 Pro Triple-Lens Camera Plateau
+  // ----------------- 8. CAMERA CUTOUT RENDERING -----------------
+  const cutoutType =
+    template?.cameraCutout.type || (isApple ? 'square-triple-pro' : 'floating-vertical');
+
+  // Helper to draw realistic glass camera lens with metallic ring
+  const drawDetailedLens = (cx: number, cy: number, radius: number) => {
+    ctx.save();
+    // Lens outer metallic ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#0c0e12';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = frameColor.accentHex || '#525a66';
+    ctx.stroke();
+
+    // Dark glass aperture
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.65, 0, Math.PI * 2);
+    ctx.fillStyle = '#05070a';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Blue AR anti-reflective glint
+    ctx.beginPath();
+    ctx.arc(cx + 2, cy - 2, radius * 0.24, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+    ctx.fill();
+    ctx.restore();
+  };
+
+  if (cutoutType === 'square-triple-pro') {
+    // iPhone Pro / Pro Max Triple Camera Plateau
     const pWidth = targetWidth * 0.41;
     const pHeight = targetWidth * 0.44;
     const pRadius = targetWidth * 0.11;
@@ -220,7 +327,7 @@ export async function drawPhoneCaseProduct(
     const py = targetWidth * 0.05;
 
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
     ctx.shadowBlur = 10;
     ctx.shadowOffsetY = 4;
     roundRect(ctx, px, py, pWidth, pHeight, pRadius);
@@ -231,82 +338,169 @@ export async function drawPhoneCaseProduct(
     ctx.stroke();
     ctx.restore();
 
-    // 3 Lenses
     const lensRadius = targetWidth * 0.077;
-    const drawLens = (cx: number, cy: number) => {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(cx, cy, lensRadius, 0, Math.PI * 2);
-      ctx.fillStyle = '#111317';
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = frameColor.accentHex;
-      ctx.stroke();
+    drawDetailedLens(px + lensRadius + 6, py + lensRadius + 6, lensRadius);
+    drawDetailedLens(px + lensRadius + 6, py + pHeight - lensRadius - 6, lensRadius);
+    drawDetailedLens(px + pWidth - lensRadius - 6, py + pHeight / 2, lensRadius);
 
-      ctx.beginPath();
-      ctx.arc(cx, cy, lensRadius * 0.65, 0, Math.PI * 2);
-      ctx.fillStyle = '#06080c';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
+    // LiDAR & Flash
+    ctx.beginPath();
+    ctx.arc(px + pWidth - 14, py + 14, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#fef08a';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(px + pWidth - 14, py + pHeight - 14, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#1e293b';
+    ctx.fill();
+  } else if (cutoutType === 'pill-horizontal') {
+    // iPhone 17 Air / iPhone 8 Plus Horizontal Visor Island
+    const pWidth = targetWidth * 0.52;
+    const pHeight = targetWidth * 0.22;
+    const pRadius = pHeight * 0.48;
+    const px = targetWidth * 0.06;
+    const py = targetWidth * 0.06;
 
-      ctx.beginPath();
-      ctx.arc(cx + 2, cy - 2, lensRadius * 0.22, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
-      ctx.fill();
-      ctx.restore();
-    };
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 3;
+    roundRect(ctx, px, py, pWidth, pHeight, pRadius);
+    ctx.fillStyle = frameColor.hex;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = `${frameColor.accentHex}cc`;
+    ctx.stroke();
+    ctx.restore();
 
-    drawLens(px + lensRadius + 6, py + lensRadius + 6);
-    drawLens(px + lensRadius + 6, py + pHeight - lensRadius - 6);
-    drawLens(px + pWidth - lensRadius - 6, py + pHeight / 2);
-  } else {
-    // Samsung Galaxy S25 Ultra floating vertical lens column
+    const lensRadius = pHeight * 0.32;
+    drawDetailedLens(px + pRadius + 2, py + pHeight / 2, lensRadius);
+    drawDetailedLens(px + pRadius + lensRadius * 2 + 10, py + pHeight / 2, lensRadius);
+
+    // Flash on the right
+    ctx.beginPath();
+    ctx.arc(px + pWidth - pRadius + 2, py + pHeight / 2, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#fef08a';
+    ctx.fill();
+  } else if (cutoutType === 'pill-vertical') {
+    // iPhone 17 / 16 / 16 Plus / X / XS Vertical Capsule Pill
+    const pWidth = targetWidth * 0.24;
+    const pHeight = targetWidth * 0.48;
+    const pRadius = pWidth * 0.48;
+    const px = targetWidth * 0.06;
+    const py = targetWidth * 0.06;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 3;
+    roundRect(ctx, px, py, pWidth, pHeight, pRadius);
+    ctx.fillStyle = frameColor.hex;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = `${frameColor.accentHex}cc`;
+    ctx.stroke();
+    ctx.restore();
+
+    const lensRadius = pWidth * 0.34;
+    drawDetailedLens(px + pWidth / 2, py + pRadius + 2, lensRadius);
+    drawDetailedLens(px + pWidth / 2, py + pHeight - pRadius - 2, lensRadius);
+
+    // Side Flash
+    ctx.beginPath();
+    ctx.arc(px + pWidth + 10, py + pHeight / 2, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#fef08a';
+    ctx.fill();
+  } else if (cutoutType === 'square-diagonal-dual') {
+    // iPhone 15 / 14 / 13 Diagonal Dual Lens Plateau
+    const pWidth = targetWidth * 0.38;
+    const pHeight = targetWidth * 0.40;
+    const pRadius = targetWidth * 0.10;
+    const px = targetWidth * 0.05;
+    const py = targetWidth * 0.05;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 4;
+    roundRect(ctx, px, py, pWidth, pHeight, pRadius);
+    ctx.fillStyle = frameColor.hex;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = `${frameColor.accentHex}bb`;
+    ctx.stroke();
+    ctx.restore();
+
+    const lensRadius = targetWidth * 0.074;
+    drawDetailedLens(px + lensRadius + 6, py + lensRadius + 6, lensRadius);
+    drawDetailedLens(px + pWidth - lensRadius - 6, py + pHeight - lensRadius - 6, lensRadius);
+
+    // Flash at top right
+    ctx.beginPath();
+    ctx.arc(px + pWidth - 14, py + 14, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#fef08a';
+    ctx.fill();
+  } else if (cutoutType === 'floating-ultra') {
+    // Samsung Galaxy S26/S25/S24/S23/S22 Ultra Penta-Lens Floating Array
     const sLensRadius = targetWidth * 0.072;
-    const sx = targetWidth * 0.05;
-    let sy = targetWidth * 0.05;
+    const sx = targetWidth * 0.06;
+    let sy = targetWidth * 0.06;
 
+    // Primary 3 Large Lenses
     for (let i = 0; i < 3; i++) {
-      ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.6)';
-      ctx.shadowBlur = 6;
-      ctx.shadowOffsetY = 3;
-      ctx.beginPath();
-      ctx.arc(sx + sLensRadius, sy + sLensRadius, sLensRadius, 0, Math.PI * 2);
-      ctx.fillStyle = '#0c0d10';
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = frameColor.accentHex;
-      ctx.stroke();
-      ctx.restore();
-
-      ctx.beginPath();
-      ctx.arc(sx + sLensRadius + 2, sy + sLensRadius - 2, sLensRadius * 0.25, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.7)';
-      ctx.fill();
-
+      drawDetailedLens(sx + sLensRadius, sy + sLensRadius, sLensRadius);
       sy += sLensRadius * 2 + 10;
     }
 
-    // Secondary sensor and flash
+    // Secondary Sensor Column (Laser AF, Flash, Periscope Telephoto)
     const secX = sx + sLensRadius * 2 + 12;
-    // Flash
-    ctx.beginPath();
-    ctx.arc(secX + targetWidth * 0.025, targetWidth * 0.065, targetWidth * 0.025, 0, Math.PI * 2);
-    ctx.fillStyle = '#fef3c7';
-    ctx.fill();
-    ctx.strokeStyle = '#f59e0b';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
     // Laser AF
     ctx.beginPath();
-    ctx.arc(secX + targetWidth * 0.03, targetWidth * 0.14, targetWidth * 0.03, 0, Math.PI * 2);
+    ctx.arc(secX + targetWidth * 0.03, targetWidth * 0.09, targetWidth * 0.03, 0, Math.PI * 2);
     ctx.fillStyle = '#450a0a';
     ctx.fill();
     ctx.strokeStyle = '#dc2626';
     ctx.stroke();
+
+    // Flash
+    ctx.beginPath();
+    ctx.arc(secX + targetWidth * 0.025, targetWidth * 0.17, targetWidth * 0.025, 0, Math.PI * 2);
+    ctx.fillStyle = '#fef3c7';
+    ctx.fill();
+    ctx.strokeStyle = '#f59e0b';
+    ctx.stroke();
+
+    // 3x Telephoto Lens
+    drawDetailedLens(secX + sLensRadius * 0.7, targetWidth * 0.25, sLensRadius * 0.7);
+  } else if (cutoutType === 'floating-vertical') {
+    // Samsung Galaxy S26/S25/S24/S23/S22/S21 Floating 3-Lens Column
+    const sLensRadius = targetWidth * 0.072;
+    const sx = targetWidth * 0.06;
+    let sy = targetWidth * 0.06;
+
+    for (let i = 0; i < 3; i++) {
+      drawDetailedLens(sx + sLensRadius, sy + sLensRadius, sLensRadius);
+      sy += sLensRadius * 2 + 10;
+    }
+
+    // Flash beside top lens
+    const secX = sx + sLensRadius * 2 + 12;
+    ctx.beginPath();
+    ctx.arc(secX + targetWidth * 0.025, targetWidth * 0.08, targetWidth * 0.025, 0, Math.PI * 2);
+    ctx.fillStyle = '#fef3c7';
+    ctx.fill();
+    ctx.strokeStyle = '#f59e0b';
+    ctx.stroke();
+  } else {
+    // Center Rounded / Legacy Single Lens
+    const cRadius = targetWidth * 0.09;
+    const cx = targetWidth / 2;
+    const cy = targetWidth * 0.15;
+    drawDetailedLens(cx, cy, cRadius);
+
+    ctx.beginPath();
+    ctx.arc(cx, cy + cRadius + 12, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#fef3c7';
+    ctx.fill();
   }
 
   ctx.restore();
@@ -352,9 +546,14 @@ export async function generateProductMockupCanvas(
   const artworkImg = await loadImage(options.artworkUrl);
 
   const phoneW = Math.round(width * 0.44);
-  const isIphone = options.device === 'iphone-16-pro';
-  const phoneH = phoneW * (isIphone ? 574 / 280 : 588 / 280);
+  const template = getPrintifyTemplate(options.device);
+  const ratio = template
+    ? template.dimensions.pixelHeight / template.dimensions.pixelWidth
+    : options.device.toLowerCase().includes('samsung')
+      ? 588 / 280
+      : 574 / 280;
 
+  const phoneH = Math.round(phoneW * ratio);
   const phoneX = (width - phoneW) / 2;
   const phoneY = (height - phoneH) / 2 - 20;
 

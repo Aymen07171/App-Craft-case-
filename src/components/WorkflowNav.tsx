@@ -47,6 +47,12 @@ const STEPS: {
   icon: React.ElementType;
 }[] = [
   {
+    id: 'batch-studio',
+    title: '★ Project Studio',
+    subtitle: 'Batch Gen, 34 Models, Drive',
+    icon: Layers,
+  },
+  {
     id: 'design',
     title: '1. Design Generation',
     subtitle: 'Niche 2D artwork',
@@ -123,6 +129,8 @@ export const WorkflowNav: React.FC<WorkflowNavProps> = ({
 
   const isStepDone = (stepId: ProductWorkflowStep): boolean => {
     switch (stepId) {
+      case 'batch-studio':
+        return hasDesign;
       case 'design':
         return hasDesign;
       case 'mockup':

@@ -28,7 +28,7 @@ Authentic leaded came solder outlines, segmented colored glass panes, translucen
 Pure 2D flat-lay graphic art print, vertical 9:16 aspect ratio, clean full-bleed decorative art piece, sharp fine details, high-end collector print.
 
 Do not include: phone, phone case, mockup, device, realistic photography, 3D render, modern clutter, shadows.`,
-    sampleImage: '/src/assets/images/sample_vitrail_pure2d_1790462384613.jpg',
+    sampleImage: '/designs/stained_glass_fox.jpg',
     defaultPlaceholders: [
       {
         tag: 'SUBJECT_POSE',
@@ -130,7 +130,7 @@ Enclosed within an elaborate {{BORDER_THEME}}.
 Crisp clean ink linework, ornamental anime poster aesthetic, delicate decorative flourishes, vintage Japanese collector card composition, flat lay 2D graphic illustration, vertical 9:16 aspect ratio, sharp fine details, masterpiece quality.
 
 Do not include: 3D render, realistic photography, phone, mockup, modern clutter, distorted anatomy.`,
-    sampleImage: '/src/assets/images/sample_vitrail_pure2d_1790462384613.jpg',
+    sampleImage: '/designs/anime_wave_pirate.jpg',
     defaultPlaceholders: [
       {
         tag: 'SUBJECT_POSE',
@@ -236,7 +236,7 @@ Authentic leadline came solder seams, translucent backlit mosaic glass panels, j
 Pure 2D flat-lay graphic art print, vertical 9:16 aspect ratio, clean full-bleed decorative art piece, sharp fine details, museum-quality stained glass artwork.
 
 Do not include: phone, phone case, mockup, device, 3D render, realistic photography, modern clutter.`,
-    sampleImage: '/src/assets/images/sample_vitrail_pure2d_1790462384613.jpg',
+    sampleImage: '/designs/celestial_witch_wolf.jpg',
     defaultPlaceholders: [
       {
         tag: 'SUBJECT_POSE',
@@ -339,7 +339,7 @@ High-detail anime art style infused with Art Nouveau {{BORDER_THEME}} borders.
 Flat lay, purely 2D graphic design, completely flat background, vertical 9:16 aspect ratio, sharp fine details.
 
 Do not include: phone, phone case, mockup, device, shadows, 3D render, realistic photography.`,
-    sampleImage: '/src/assets/images/sample_vitrail_pure2d_1790462384613.jpg',
+    sampleImage: '/designs/kitsune_samurai.jpg',
     defaultPlaceholders: [
       {
         tag: 'SUBJECT_POSE',

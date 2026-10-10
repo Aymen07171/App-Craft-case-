@@ -552,7 +552,190 @@ export const downloadCsvFile = (csvContent: string, fileName: string): void => {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 };
 
+export interface PrintifyMockupPreset {
+  key: string;
+  label: string;
+  variantId: number;
+  cameraId: number;
+  cameraLabel: string;
+}
+
+export const PRINTIFY_6_SELECTED_MOCKUPS: PrintifyMockupPreset[] = [
+  {
+    key: 'front-iphone-18-pro-max',
+    label: 'Front, iPhone 18 Pro Max',
+    variantId: 423468,
+    cameraId: 152213,
+    cameraLabel: 'front',
+  },
+  {
+    key: 'closeup-iphone-16-pro-max',
+    label: 'Close-up, iPhone 16 Pro Max',
+    variantId: 112813,
+    cameraId: 106399,
+    cameraLabel: 'close-up',
+  },
+  {
+    key: 'layers-iphone-16-pro-max',
+    label: 'iPhone 16 Pro Max',
+    variantId: 112813,
+    cameraId: 106403,
+    cameraLabel: 'layers',
+  },
+  {
+    key: 'context-1-iphone-11',
+    label: 'Context 1, iPhone 11',
+    variantId: 62582,
+    cameraId: 97553,
+    cameraLabel: 'context-1',
+  },
+  {
+    key: 'closeup-2-samsung-s24',
+    label: 'Samsung Galaxy S24',
+    variantId: 105527,
+    cameraId: 102321,
+    cameraLabel: 'close-up-2',
+  },
+  {
+    key: 'front-samsung-s26',
+    label: 'Front, Samsung Galaxy S26',
+    variantId: 254190,
+    cameraId: 128128,
+    cameraLabel: 'front',
+  },
+];
+
+export interface MasterPrintifyProductConfig {
+  sku: string;
+  printifyId: string;
+  slug: string;
+  theme: string;
+  title: string;
+  shortTitle: string;
+  description: string;
+  keywords: string;
+  artworkFile: string;
+}
+
+export const MASTER_5_PRINTIFY_PRODUCTS: MasterPrintifyProductConfig[] = [
+  {
+    sku: 'CASE-FOREST-001',
+    printifyId: '6aca3ea25a8ad36f790b398d',
+    slug: 'forest-guardians-mystical-creatures-tough-phone-case.jpg',
+    theme: 'Forest guardians & mystical creatures',
+    title: 'Forest Guardians & Mystical Creatures Tough Phone Case | Enchanted Woodland',
+    shortTitle: 'Forest Guardians & Mystical Creatures Tough Phone Case',
+    description:
+      'Step into the ancient emerald woods with our Forest Guardians & Mystical Creatures Tough Phone Case. Featuring an ethereal antlers-crowned forest spirit surrounded by glowing bioluminescent flora, dual-layer impact-resistant polycarbonate + TPU armor, raised camera & screen bezels, and MagSafe compatibility. Fits iPhone 18/17/16/15/14/13/12/11 & Samsung Galaxy S26/S25/S24/S23.',
+    keywords:
+      'forest guardian case, mystical creature phone case, enchanted forest iphone case, cottagecore phone case, fantasy woodland art, tough phone case, spirit of the forest, bioluminescent art case, nature lover gift, aesthetic iphone 16 case, samsung s24 tough case, magical creatures, magsafe tough case',
+    artworkFile: '/designs/CASE-FOREST-001_9x16_Artwork.png',
+  },
+  {
+    sku: 'CASE-SACRED-001',
+    printifyId: '6aca3ead8ae24d74970dd1de',
+    slug: 'sacred-stag-of-the-wildwood-tough-phone-case.jpg',
+    theme: 'Sacred Stag of the Wildwood',
+    title: 'Sacred Stag of the Wildwood Tough Phone Case | Celestial Golden Antlers Art',
+    shortTitle: 'Sacred Stag of the Wildwood Tough Phone Case',
+    description:
+      'Channel the majesty of the ancient forest with the Sacred Stag of the Wildwood Tough Phone Case. Showcasing a regal celestial white stag with luminous golden runes and starlight antlers, engineered with dual-layer shockproof TPU + polycarbonate protection, raised screen/lens edges, and full wireless charging support. Available for 34 iPhone & Samsung Galaxy models.',
+    keywords:
+      'sacred stag phone case, celestial deer iphone case, wildwood stag art, patronus style phone case, golden antlers case, mystical deer gift, fantasy nature phone case, tough protective case, witchy forest aesthetic, iphone 16 pro max case, samsung s25 ultra case, woodland creature gift, spiritual animal art',
+    artworkFile: '/designs/CASE-SACRED-001_9x16_Artwork.png',
+  },
+  {
+    sku: 'CASE-NINETA-001',
+    printifyId: '6aca3ebad7538ac1330eb064',
+    slug: 'nine-tailed-fox-of-the-untamed-forest-tough-phone-case.jpg',
+    theme: 'Nine-Tailed Fox of the Untamed Forest',
+    title: 'Nine-Tailed Fox of the Untamed Forest Tough Phone Case | Mythical Kitsune',
+    shortTitle: 'Nine-Tailed Fox of the Untamed Forest Tough Phone Case',
+    description:
+      'Unleash mythical elegance with our Nine-Tailed Fox of the Untamed Forest Tough Phone Case. Featuring a fierce celestial Kitsune wreathed in ethereal blue foxfire amidst a twilight bamboo sanctuary, built with dual-layer impact protection (polycarbonate outer shell + shock-absorbing TPU liner) and 300 DPI glossy wrap print. Fits 34 iPhone & Galaxy models.',
+    keywords:
+      'nine tailed fox case, kitsune phone case, mythical fox iphone case, japanese mythology art, foxfire aesthetic case, anime fantasy phone case, untamed forest fox, tough dual layer case, spirit fox gift, iphone 16 pro case, samsung galaxy s24 case, glowing kitsune art, magical beast phone case',
+    artworkFile: '/designs/CASE-NINETA-001_9x16_Artwork.png',
+  },
+  {
+    sku: 'CASE-ROOTCO-001',
+    printifyId: '6aca3ec764139bf30d00f20f',
+    slug: 'ancient-root-colossus-tough-phone-case.jpg',
+    theme: 'Ancient Root Colossus',
+    title: 'Ancient Root Colossus Tough Phone Case | Treant Forest Golem Fantasy Armor',
+    shortTitle: 'Ancient Root Colossus Tough Phone Case',
+    description:
+      'Guard your device with primordial strength using the Ancient Root Colossus Tough Phone Case. Depicting a towering moss-clad treant colossus with glowing amber heartwood runes rising from a misty primeval ravine, paired with heavy-duty dual-layer polycarbonate + TPU drop protection and raised camera lip. Fits iPhone 11–18 & Samsung Galaxy S22–S26.',
+    keywords:
+      'ancient root colossus, treant phone case, forest golem iphone case, earth elemental art, dnd druid phone case, dark fantasy nature case, giant tree guardian, tough armor phone case, gamer fantasy gift, iphone 16 pro max tough case, samsung s24 ultra case, mythical colossus art, mossy rune aesthetic',
+    artworkFile: '/designs/CASE-ROOTCO-001_9x16_Artwork.png',
+  },
+  {
+    sku: 'CASE-BEARNO-001',
+    printifyId: '6aca3ed4804a2b3c390a05ed',
+    slug: 'the-ancient-bear-of-the-wild-north-tough-phone-case.jpg',
+    theme: 'The Ancient Bear of the Wild North',
+    title: 'The Ancient Bear of the Wild North Tough Phone Case | Nordic Aurora Spirit',
+    shortTitle: 'The Ancient Bear of the Wild North Tough Phone Case',
+    description:
+      'Embrace the untamed power of the arctic wilderness with The Ancient Bear of the Wild North Tough Phone Case. Featuring a colossal frost-armored spirit bear etched with glowing cyan Nordic runes beneath the Aurora Borealis, crafted with dual-layer shockproof TPU + polycarbonate armor and vivid 300 DPI edge-to-edge print. Fits 34 iPhone & Samsung models.',
+    keywords:
+      'ancient bear phone case, wild north bear art, nordic rune phone case, aurora borealis iphone case, spirit bear gift, viking mythology case, grizzly guardian art, arctic wildlife case, tough protective phone case, iphone 16 pro max case, samsung s25 case, winter wilderness aesthetic, bear lover gift',
+    artworkFile: '/designs/CASE-BEARNO-001_9x16_Artwork.png',
+  },
+];
+
 /**
- * Empty default Pinterest rows (removed default sample products)
+ * Builds ready-to-publish Pinterest Bulk CSV rows from the 5 Master Printify products
+ * filtered by whichever of the 6 Printify Mockups are selected.
  */
-export const SAMPLE_PINTEREST_CSV_ROWS: PinterestCsvRow[] = [];
+export const buildMasterPrintifyPinterestRows = (
+  selectedMockupKeys: string[] = PRINTIFY_6_SELECTED_MOCKUPS.map((m) => m.key),
+  options?: {
+    boardName?: string;
+    destinationLink?: string;
+    startDate?: string;
+  }
+): PinterestCsvRow[] => {
+  const board = options?.boardName || 'Phone Cases';
+  const baseLink =
+    options?.destinationLink ||
+    'https://www.etsy.com/shop/CraftCasesStudio?utm_source=pinterest&utm_medium=social&utm_campaign=mystical_forest_collection';
+  const baseDateObj = options?.startDate ? new Date(options.startDate) : new Date(Date.now() + 86400000);
+
+  const activeMockups = PRINTIFY_6_SELECTED_MOCKUPS.filter((m) => selectedMockupKeys.includes(m.key));
+  const rows: PinterestCsvRow[] = [];
+
+  MASTER_5_PRINTIFY_PRODUCTS.forEach((prod, pIdx) => {
+    const pubDate = new Date(baseDateObj);
+    pubDate.setDate(pubDate.getDate() + pIdx);
+    const pubDateStr = pubDate.toISOString().split('T')[0];
+
+    activeMockups.forEach((m, mIdx) => {
+      const mediaUrl = `https://images.printify.com/mockup/${prod.printifyId}/${m.variantId}/${m.cameraId}/${prod.slug}?camera_label=${m.cameraLabel}`;
+      const rawTitle = activeMockups.length === 1 || mIdx === 0 ? prod.title : `${prod.shortTitle} — ${m.label}`;
+      const pinTitle = rawTitle.length > 100 ? rawTitle.slice(0, 97) + '...' : rawTitle;
+      const separator = baseLink.includes('?') ? '&' : '?';
+
+      rows.push({
+        'Product ID': activeMockups.length === 1 ? prod.sku : `${prod.sku}-${m.cameraLabel.toUpperCase()}-${mIdx + 1}`,
+        Title: pinTitle,
+        Description: prod.description.slice(0, 700),
+        'Media URL': mediaUrl,
+        'Pinterest board': board,
+        Thumbnail: '',
+        Link: `${baseLink}${separator}utm_content=${prod.sku.toLowerCase()}_${m.key}`,
+        'Publish date': pubDateStr,
+        Keywords: prod.keywords,
+      });
+    });
+  });
+
+  return rows;
+};
+
+/**
+ * Default Pinterest rows pre-populated with the 5 Master Printify products × 6 Selected Mockups (30 Pins)
+ */
+export const SAMPLE_PINTEREST_CSV_ROWS: PinterestCsvRow[] = buildMasterPrintifyPinterestRows();
+

@@ -343,7 +343,10 @@ Elevate your device with this stunning ${cleanNiche} design featuring ${primaryT
 • Vivid, edge-to-edge wrap print with rich fade-resistant colors
 • Precision cutouts for speakers, camera, and all ports
 • Compatible with wireless Qi charging
-• Available for popular Apple iPhone & Samsung Galaxy models
+
+📱 Available Device Models:
+• Apple iPhone: iPhone 18 Pro Max, iPhone 18 Pro, iPhone 17 Pro Max, iPhone 17 Pro, iPhone 17, iPhone 16 Pro Max, iPhone 16 Pro, iPhone 16 Plus, iPhone 16, iPhone 15 Pro Max, iPhone 15 Pro, iPhone 15 Plus, iPhone 15, iPhone 14 Pro Max, iPhone 14 Pro, iPhone 14 Plus, iPhone 14, iPhone 13 Pro Max, iPhone 13 Pro, iPhone 13, iPhone 13 Mini, iPhone 12 Pro Max, iPhone 12 Pro, iPhone 12, iPhone 12 Mini, iPhone 11 Pro Max, iPhone 11 Pro, iPhone 11
+• Samsung Galaxy: Samsung Galaxy S26, Samsung Galaxy S25, Samsung Galaxy S24, Samsung Galaxy S23, Samsung Galaxy S22, Samsung Galaxy S21
 
 🎁 Ideal Gift:
 A unique and thoughtful gift for ${cleanNiche} enthusiasts, art lovers, friends, and family on birthdays, holidays, or special celebrations.
@@ -419,7 +422,7 @@ CONTEXT:
 
 REQUIREMENTS:
 1. productTitle: Engaging, descriptive Etsy title with key search phrases (max 140 characters). Do not keyword-stuff.
-2. productDescription: Detailed, customer-ready description with intro hook, visual details, dual-layer tough protection highlights, wireless charging compatibility, and gift appeal.
+2. productDescription: Detailed, customer-ready description with intro hook, visual details, dual-layer tough protection highlights, wireless charging compatibility, clear list of compatible models covering Apple iPhone (18 Pro Max down to 11) and Samsung Galaxy (S26 down to S21), and gift appeal.
 3. etsyTags: Exactly 13 distinct, high-volume Etsy tags. Each tag MUST be between 2 and 20 characters, containing only letters, numbers, spaces, and hyphens.
 4. primaryKeywords: 3-5 top search terms.
 5. longTailKeywords: 4-6 specific search phrases.

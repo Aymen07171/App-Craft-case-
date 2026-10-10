@@ -4,6 +4,7 @@
  */
 
 export type ProductWorkflowStep =
+  | 'batch-studio'
   | 'design'
   | 'mockup'
   | 'direct-upload'

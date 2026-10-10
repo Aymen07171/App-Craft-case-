@@ -24,6 +24,8 @@ import {
   Check,
   ShieldCheck,
   Activity,
+  Search,
+  X,
 } from 'lucide-react';
 import { GeneratedDesign } from '../design-studio/types';
 import { UnifiedProductRecord } from '../types/unifiedWorkflow';
@@ -125,6 +127,16 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
   const [shops, setShops] = useState<Shop[]>([]);
   const [selectedShopId, setSelectedShopId] = useState(String(product.printify.shopId || ''));
   const [blueprints, setBlueprints] = useState<CatalogItem[]>([]);
+  const [blueprintSearchQuery, setBlueprintSearchQuery] = useState('');
+  const filteredBlueprints = useMemo(() => {
+    const q = blueprintSearchQuery.trim().toLowerCase();
+    if (!q) return blueprints;
+    return blueprints.filter(
+      (b) =>
+        (b.title || '').toLowerCase().includes(q) ||
+        String(b.id || '').includes(q)
+    );
+  }, [blueprints, blueprintSearchQuery]);
   const [providers, setProviders] = useState<CatalogItem[]>([]);
   const [variants, setVariants] = useState<CatalogItem[]>([]);
   const [shippingRows, setShippingRows] = useState<ShippingRow[]>([]);
@@ -646,6 +658,42 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
       variantIds: availableIds,
       selectedModels: variants
         .filter((v) => availableIds.includes(String(v.id)))
+        .map((v) => v.title || `Variant ${v.id}`),
+    });
+  };
+
+  const selectAllIphones = () => {
+    const iphoneIds = variants
+      .filter((v) => v.is_available !== false && /iphone/i.test(v.title || ''))
+      .map((v) => String(v.id));
+    const nonIphoneSelected = [...enabledVariantIds].filter((id) => {
+      const match = variants.find((v) => String(v.id) === id);
+      return match && !/iphone/i.test(match.title || '');
+    });
+    const combinedIds = Array.from(new Set([...nonIphoneSelected, ...iphoneIds]));
+    setReviewed(false);
+    updatePrintify({
+      variantIds: combinedIds,
+      selectedModels: variants
+        .filter((v) => combinedIds.includes(String(v.id)))
+        .map((v) => v.title || `Variant ${v.id}`),
+    });
+  };
+
+  const selectAllSamsung = () => {
+    const samsungIds = variants
+      .filter((v) => v.is_available !== false && /samsung/i.test(v.title || ''))
+      .map((v) => String(v.id));
+    const nonSamsungSelected = [...enabledVariantIds].filter((id) => {
+      const match = variants.find((v) => String(v.id) === id);
+      return match && !/samsung/i.test(match.title || '');
+    });
+    const combinedIds = Array.from(new Set([...nonSamsungSelected, ...samsungIds]));
+    setReviewed(false);
+    updatePrintify({
+      variantIds: combinedIds,
+      selectedModels: variants
+        .filter((v) => combinedIds.includes(String(v.id)))
         .map((v) => v.title || `Variant ${v.id}`),
     });
   };
@@ -1443,8 +1491,38 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
                 </span>
               </label>
 
-              <label className={labelClass}>
-                Phone Case Model
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className={labelClass}>Phone Case Model (Blueprint)</span>
+                  {blueprintSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setBlueprintSearchQuery('')}
+                      className="text-[10px] text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      Clear search
+                    </button>
+                  )}
+                </div>
+                <div className="relative mb-1">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={blueprintSearchQuery}
+                    onChange={(e) => setBlueprintSearchQuery(e.target.value)}
+                    placeholder="Search model (e.g. 'tough', '269')..."
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 pl-8 pr-7 py-1.5 text-xs text-white placeholder-slate-500 focus:border-indigo-400 focus:outline-none"
+                  />
+                  {blueprintSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setBlueprintSearchQuery('')}
+                      className="absolute right-2 top-2 text-slate-500 hover:text-white cursor-pointer"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
                 <select
                   value={blueprintId}
                   disabled={Boolean(savedProductId) || publishing}
@@ -1452,16 +1530,16 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
                   className={inputClass}
                 >
                   {!blueprintId && <option value="">Select a phone case model</option>}
-                  {blueprints.map((item) => (
+                  {filteredBlueprints.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.title} (ID: {item.id})
                     </option>
                   ))}
                 </select>
                 <span className="mt-1 block text-[10px] text-slate-500">
-                  {blueprints.length} phone case blueprint(s) available
+                  {filteredBlueprints.length} of {blueprints.length} phone case blueprint(s) available
                 </span>
-              </label>
+              </div>
 
               <label className={labelClass}>
                 Print Provider
@@ -1677,25 +1755,40 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
                       Catalog costs and stock status for each phone case model variant.
                     </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {variants.length > 0 && (
                       <>
                         <button
                           type="button"
                           onClick={selectAllVariants}
                           disabled={variantsLoading || Boolean(savedProductId) || publishing}
-                          className="text-[11px] text-indigo-300 hover:text-indigo-200 disabled:opacity-40 hover:underline"
+                          className="rounded bg-slate-800 px-2 py-0.5 text-[11px] text-indigo-300 hover:text-indigo-200 disabled:opacity-40"
                         >
-                          Select all
+                          Select all ({variants.length})
                         </button>
-                        <span className="text-slate-700 text-xs">|</span>
+                        <button
+                          type="button"
+                          onClick={selectAllIphones}
+                          disabled={variantsLoading || Boolean(savedProductId) || publishing}
+                          className="rounded bg-slate-800 px-2 py-0.5 text-[11px] text-sky-300 hover:text-sky-200 disabled:opacity-40"
+                        >
+                          All iPhones ({variants.filter((v) => /iphone/i.test(v.title || '')).length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={selectAllSamsung}
+                          disabled={variantsLoading || Boolean(savedProductId) || publishing}
+                          className="rounded bg-slate-800 px-2 py-0.5 text-[11px] text-emerald-300 hover:text-emerald-200 disabled:opacity-40"
+                        >
+                          All Samsung ({variants.filter((v) => /samsung/i.test(v.title || '')).length})
+                        </button>
                         <button
                           type="button"
                           onClick={clearAllVariants}
                           disabled={variantsLoading || Boolean(savedProductId) || publishing}
-                          className="text-[11px] text-slate-400 hover:text-slate-300 disabled:opacity-40 hover:underline"
+                          className="rounded bg-slate-800 px-2 py-0.5 text-[11px] text-slate-400 hover:text-slate-300 disabled:opacity-40"
                         >
-                          Clear all
+                          Clear
                         </button>
                         <span className="text-slate-700 text-xs">|</span>
                       </>

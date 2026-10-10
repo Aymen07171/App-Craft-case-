@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -69,11 +69,21 @@ export const WorkflowStudio: React.FC<WorkflowStudioProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sceneReferenceInputRef = useRef<HTMLInputElement>(null);
+  const [referenceFilterBrand, setReferenceFilterBrand] = useState<'all' | 'apple' | 'samsung'>('all');
+  const [referenceSearch, setReferenceSearch] = useState<string>('');
   const stepIndex = STEPS.findIndex((step) => step.id === workflow.activeStep);
   const activeStep = STEPS[stepIndex];
   const selectedReferences = PRINTIFY_TEMPLATES.filter((reference) =>
     workflow.productReferenceIds.includes(reference.id)
   );
+  const filteredTemplates = PRINTIFY_TEMPLATES.filter((reference) => {
+    if (referenceFilterBrand !== 'all' && reference.brand !== referenceFilterBrand) return false;
+    if (referenceSearch.trim()) {
+      const q = referenceSearch.toLowerCase().trim();
+      return reference.modelName.toLowerCase().includes(q) || reference.id.toLowerCase().includes(q);
+    }
+    return true;
+  });
   const allReferencesSelected = workflow.productReferenceIds.length === PRINTIFY_TEMPLATES.length;
   const canContinue =
     (workflow.activeStep === 'upload-design' && Boolean(workflow.artwork)) ||
@@ -150,19 +160,72 @@ export const WorkflowStudio: React.FC<WorkflowStudioProps> = ({
             <div>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-medium text-white">Printify phone cases</h2>
-                  <p className="mt-1 text-sm text-slate-400">Each selected model gets its own scene using its catalog geometry.</p>
+                  <h2 className="text-sm font-medium text-white">Printify Phone Cases ({filteredTemplates.length} models)</h2>
+                  <p className="mt-1 text-sm text-slate-400">Each selected model gets its own scene using its authentic catalog geometry.</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onSelectAllReferences(allReferencesSelected ? [] : PRINTIFY_TEMPLATES.map((item) => item.id))}
-                  className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-800"
-                >
-                  {allReferencesSelected ? 'Clear all' : 'Select all'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onSelectAllReferences(filteredTemplates.map((item) => item.id))}
+                    className="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 transition hover:bg-slate-800"
+                  >
+                    Select Filtered ({filteredTemplates.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onSelectAllReferences(allReferencesSelected ? [] : PRINTIFY_TEMPLATES.map((item) => item.id))}
+                    className="rounded-md border border-slate-700 px-3 py-1 text-xs text-slate-200 transition hover:bg-slate-800"
+                  >
+                    {allReferencesSelected ? 'Clear all' : `Select all (${PRINTIFY_TEMPLATES.length})`}
+                  </button>
+                </div>
               </div>
+
+              {/* Brand Tabs & Search */}
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setReferenceFilterBrand('all')}
+                    className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
+                      referenceFilterBrand === 'all' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    All ({PRINTIFY_TEMPLATES.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReferenceFilterBrand('apple')}
+                    className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
+                      referenceFilterBrand === 'apple' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    iPhone ({PRINTIFY_TEMPLATES.filter((t) => t.brand === 'apple').length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReferenceFilterBrand('samsung')}
+                    className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
+                      referenceFilterBrand === 'samsung' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Samsung ({PRINTIFY_TEMPLATES.filter((t) => t.brand === 'samsung').length})
+                  </button>
+                </div>
+
+                <div className="relative min-w-[200px] flex-1 max-w-xs">
+                  <input
+                    type="text"
+                    value={referenceSearch}
+                    onChange={(e) => setReferenceSearch(e.target.value)}
+                    placeholder="Search model (e.g. 17 Air, Ultra)..."
+                    className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
+                  />
+                </div>
+              </div>
+
               <div className="grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
-                {PRINTIFY_TEMPLATES.map((reference) => {
+                {filteredTemplates.map((reference) => {
                   const isSelected = workflow.productReferenceIds.includes(reference.id);
                   return (
                     <button

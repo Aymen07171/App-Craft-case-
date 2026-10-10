@@ -1,6 +1,8 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
+import fs from 'fs';
+import { exec, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -25,6 +27,19 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+const projectsDir = path.resolve(__dirname, 'projects');
+if (!fs.existsSync(projectsDir)) {
+  fs.mkdirSync(projectsDir, { recursive: true });
+}
+app.use('/projects', express.static(projectsDir));
+
+const publicDir = path.resolve(__dirname, 'public');
+if (!fs.existsSync(publicDir)) {
+  fs.mkdirSync(publicDir, { recursive: true });
+}
+app.use(express.static(publicDir));
+app.use('/designs', express.static(path.resolve(publicDir, 'designs')));
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -596,6 +611,242 @@ app.post('/api/drive/download-file', async (req, res) => {
   } catch (err: any) {
     console.error('Error downloading Google Drive file:', err);
     return res.status(500).json({ error: err.message || 'Failed to download Google Drive file.' });
+  }
+});
+
+// Helper to find Python binary on Windows
+function getPythonBinaryPath(): string {
+  const candidates = [
+    process.env.PYTHON_PATH,
+    'C:\\Users\\jacka\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe',
+    path.resolve(process.cwd(), '.venv', 'Scripts', 'python.exe'),
+    'python',
+    'py',
+  ];
+  for (const c of candidates) {
+    if (c && (fs.existsSync(c) || c === 'python' || c === 'py')) {
+      return c;
+    }
+  }
+  return 'python';
+}
+
+// API: Run External Python Master Pipeline Script
+app.post('/api/projects/run-python-pipeline', async (req, res) => {
+  try {
+    const {
+      theme = 'Japanese design for a dragon',
+      count = 1,
+      engine = 'gemini_web',
+      prompt,
+      syncDrive = true,
+      apiKey
+    } = req.body || {};
+    const pythonBin = getPythonBinaryPath();
+
+    const isSelenium = engine === 'selenium' || engine === 'gemini_web' || engine === 'gemini';
+    const scriptPath = isSelenium
+      ? path.resolve(__dirname, 'scripts', 'gemini_web_selenium.py')
+      : path.resolve(__dirname, 'scripts', 'master_pipeline.py');
+
+    if (!fs.existsSync(scriptPath)) {
+      return res.status(404).json({ error: `Python script not found at ${scriptPath}` });
+    }
+
+    const args = [
+      scriptPath,
+      '--theme', String(theme),
+      '--count', String(count),
+      '--output-dir', path.resolve(__dirname, 'projects'),
+    ];
+
+    if (prompt) {
+      args.push('--prompt', String(prompt));
+    }
+
+    if (isSelenium && !syncDrive) {
+      args.push('--no-drive-sync');
+    }
+
+    const effectiveApiKey = apiKey || process.env.GEMINI_API_KEY;
+    if (effectiveApiKey && !effectiveApiKey.startsWith('your_') && !isSelenium) {
+      args.push('--api-key', effectiveApiKey);
+    }
+
+    console.log(`[SERVER] Spawning Python pipeline (${path.basename(scriptPath)}): "${pythonBin}" with theme "${theme}" (${count} designs)...`);
+
+    const child = spawn(pythonBin, args, { cwd: __dirname });
+    let stdoutData = '';
+    let stderrData = '';
+
+    child.stdout.on('data', (chunk) => {
+      stdoutData += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderrData += chunk.toString();
+    });
+
+    child.on('close', (exitCode) => {
+      console.log(`[SERVER] Python pipeline exited with code ${exitCode}`);
+      if (exitCode !== 0 && !stdoutData.includes('__JSON_REPORT__')) {
+        return res.status(500).json({
+          error: `Python pipeline failed with exit code ${exitCode}`,
+          details: stderrData || stdoutData,
+        });
+      }
+
+      // Parse JSON report
+      const jsonMarker = '__JSON_REPORT__';
+      const markerIdx = stdoutData.indexOf(jsonMarker);
+      if (markerIdx === -1) {
+        return res.status(500).json({
+          error: 'Pipeline completed but did not return structured report.',
+          output: stdoutData,
+          stderr: stderrData,
+        });
+      }
+
+      try {
+        const jsonStr = stdoutData.slice(markerIdx + jsonMarker.length).trim();
+        const report = JSON.parse(jsonStr);
+
+        // Enhance designs with web accessible URLs and DataURLs
+        if (Array.isArray(report.designs)) {
+          report.designs = report.designs.map((d: any) => {
+            const relPath = path.relative(path.resolve(__dirname, 'projects'), d.localPath).replace(/\\/g, '/');
+            const webUrl = `/projects/${relPath}`;
+            let dataUrl = webUrl;
+            if (fs.existsSync(d.localPath)) {
+              const buf = fs.readFileSync(d.localPath);
+              dataUrl = `data:image/png;base64,${buf.toString('base64')}`;
+            }
+            return {
+              ...d,
+              webUrl,
+              imageUrl: dataUrl,
+            };
+          });
+        }
+
+        return res.json({
+          ...report,
+          logs: stdoutData.slice(0, markerIdx).trim(),
+        });
+      } catch (parseErr: any) {
+        return res.status(500).json({
+          error: 'Failed to parse pipeline report JSON.',
+          details: parseErr.message,
+          raw: stdoutData,
+        });
+      }
+    });
+  } catch (err: any) {
+    console.error('Error running Python pipeline:', err);
+    return res.status(500).json({ error: err.message || 'Failed to execute Python pipeline.' });
+  }
+});
+
+// API: Save and Export Project Folder Directly to Disk
+app.post('/api/projects/export-folder', async (req, res) => {
+  try {
+    const { projectName = 'Phone_Case_Collection', designs = [], excelBase64 } = req.body || {};
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const safeName = `${String(projectName).replace(/[^a-zA-Z0-9_-]/g, '_')}_${timestamp}`;
+    const targetDir = path.resolve(__dirname, 'projects', safeName);
+    const designsDir = path.join(targetDir, 'designs');
+    const variantsDir = path.join(targetDir, 'variants');
+    const specsDir = path.join(targetDir, 'specs');
+
+    fs.mkdirSync(designsDir, { recursive: true });
+    fs.mkdirSync(variantsDir, { recursive: true });
+    fs.mkdirSync(specsDir, { recursive: true });
+
+    // Write Excel Workbook if provided
+    let excelPath = '';
+    if (excelBase64) {
+      const cleanBase64 = excelBase64.replace(/^data:[^;]+;base64,/, '');
+      const excelBuf = Buffer.from(cleanBase64, 'base64');
+      excelPath = path.join(targetDir, `${safeName}_Master_Metadata.xlsx`);
+      fs.writeFileSync(excelPath, excelBuf);
+    }
+
+    // Write Design PNGs
+    const writtenDesigns: any[] = [];
+    for (const d of designs) {
+      const fileName = `${d.sku || 'CASE-001'}_9x16_Artwork.png`;
+      const filePath = path.join(designsDir, fileName);
+
+      if (d.imageUrl && d.imageUrl.startsWith('data:image/')) {
+        const base64Data = d.imageUrl.replace(/^data:image\/\w+;base64,/, '');
+        fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+      }
+
+      writtenDesigns.push({
+        sku: d.sku,
+        fileName,
+        localPath: filePath,
+        webUrl: `/projects/${safeName}/designs/${fileName}`,
+      });
+    }
+
+    return res.json({
+      success: true,
+      projectName: safeName,
+      projectDir: targetDir,
+      excelPath,
+      designsCount: writtenDesigns.length,
+      designs: writtenDesigns,
+    });
+  } catch (err: any) {
+    console.error('Error exporting project folder:', err);
+    return res.status(500).json({ error: err.message || 'Failed to export project folder.' });
+  }
+});
+
+// API: List existing projects on disk
+app.get('/api/projects/list', async (req, res) => {
+  try {
+    const baseProjectsDir = path.resolve(__dirname, 'projects');
+    if (!fs.existsSync(baseProjectsDir)) {
+      return res.json({ projects: [] });
+    }
+
+    const items = fs.readdirSync(baseProjectsDir, { withFileTypes: true });
+    const projectList = [];
+
+    for (const item of items) {
+      if (item.isDirectory()) {
+        const pDir = path.join(baseProjectsDir, item.name);
+        const reportPath = path.join(pDir, 'project_report.json');
+        let reportData: any = null;
+
+        if (fs.existsSync(reportPath)) {
+          try {
+            reportData = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
+          } catch (_) {}
+        }
+
+        const designsDir = path.join(pDir, 'designs');
+        let imageFiles: string[] = [];
+        if (fs.existsSync(designsDir)) {
+          imageFiles = fs.readdirSync(designsDir).filter((f) => /\.(png|jpe?g|webp)$/i.test(f));
+        }
+
+        projectList.push({
+          folderName: item.name,
+          folderPath: pDir,
+          designsCount: imageFiles.length,
+          previewImage: imageFiles[0] ? `/projects/${item.name}/designs/${imageFiles[0]}` : null,
+          report: reportData,
+        });
+      }
+    }
+
+    return res.json({ projects: projectList.reverse() });
+  } catch (err: any) {
+    console.error('Error listing projects:', err);
+    return res.status(500).json({ error: err.message || 'Failed to list projects.' });
   }
 });
 

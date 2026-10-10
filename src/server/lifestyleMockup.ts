@@ -99,7 +99,25 @@ export async function generateLifestyleMockup(input: LifestyleMockupRequest): Pr
   ].filter(Boolean).join('\n');
   const productGeometryInstruction = input.productMockupUrl
     ? 'Preserve the physical case shape, materials, finish, edges, buttons, camera opening, proportions, and cutouts shown in Image 2. Do not substitute another case or model.'
-    : `Reconstruct the named catalog model using the physical geometry, dimensions, camera opening, and features specified below. Do not substitute another case or model.`;
+    : 'Reconstruct the named catalog model using the physical geometry, dimensions, camera opening, and features specified below. Do not substitute another case or model.';
+
+  // Determine detailed physical case styling
+  let casePhysicalProfile = input.caseType || 'dual-layer tough phone case';
+  const lowerCaseType = (input.caseType || '').toLowerCase();
+  if (lowerCaseType.includes('wallet') || lowerCaseType.includes('flip')) {
+    casePhysicalProfile = 'premium faux leather folio wallet phone case with stitched borders, card slots, and wrap-around cover with subtle magnetic closure clasp';
+  } else if (lowerCaseType.includes('clear')) {
+    casePhysicalProfile = 'crystal-clear transparent hybrid phone case with flexible transparent TPU bumper edges revealing the metallic phone rim, and ultra-vivid printed backplate artwork';
+  } else if (lowerCaseType.includes('eco') || lowerCaseType.includes('bio')) {
+    casePhysicalProfile = 'eco-friendly biodegradable matte phone case crafted from plant-based PLA and bamboo wheat straw composite with delicate organic speckles';
+  } else if (lowerCaseType.includes('slim') || lowerCaseType.includes('snap')) {
+    casePhysicalProfile = 'ultra-slim single-piece polycarbonate snap case with seamless 3D edge-wrap dye-sublimation print';
+  } else if (lowerCaseType.includes('flexi') || lowerCaseType.includes('silicone')) {
+    casePhysicalProfile = 'flexible shock-absorbing silicone TPU phone case with soft-touch matte finish and grip sides';
+  } else if (lowerCaseType.includes('tough')) {
+    casePhysicalProfile = 'dual-layer heavy-duty tough phone case with impact-absorbing black TPU inner liner, reinforced corner bumpers, and rigid polycarbonate outer backplate';
+  }
+
   const prompt = `[PRODUCT AND ARTWORK PRESERVATION]:
 Create one photorealistic commercial lifestyle photograph using the user's original case artwork and the exact catalog model specifications below.
 ${sourceImageInstructions}
@@ -107,13 +125,13 @@ ${sourceImageInstructions}
 PRODUCT MUST REMAIN FIXED:
 - ${productGeometryInstruction}
 - Device: ${input.modelName || 'the selected catalog phone case'} (${brandName}).
-- Case construction: ${input.caseType || 'as specified by the selected catalog model'}.
+- Case construction: ${casePhysicalProfile}.
 - Reference dimensions: ${dimensionInfo}.
 - Physical case shape and features: ${input.caseShapeDesc || 'follow the exact named catalog model and its standard physical design'}.
 - Camera opening: ${cameraDescription}.
 - Image 1 is the immutable artwork source. Reproduce its exact design, colors, layout, and details on the case; do not redraw, reinterpret, recolor, crop, mirror, or replace any part of it.
-- Image 1 is the immutable artwork source. Reproduce its exact design, colors, layout, and details on the case; do not redraw, reinterpret, recolor, crop, mirror, or replace any part of it.
 - Keep the complete case-back artwork sharp, flat, correctly aligned, and unobstructed. Nothing may cross over the artwork.
+- SAFE ZONE: Respect the camera cutout area (${cameraDescription}) at the top. Ensure key character faces, focal points, and artwork typography stay unobstructed below the top safe-zone.
 - Match the artwork placement and scale to the product reference when supplied; otherwise fit it to the selected model specifications. Do not invent graphics, text, logos, or watermarks.
 
 ENVIRONMENT IS CREATIVE:

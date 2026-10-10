@@ -31,6 +31,8 @@ import {
   FolderDown,
   FolderCheck,
   Link2,
+  Search,
+  ChevronDown,
 } from 'lucide-react';
 import {
   ExcelProductRow,
@@ -50,8 +52,17 @@ import {
 import {
   connectGoogleDriveAndSheets,
   getStoredGoogleSession,
+  uploadFileToFolder,
+  extractGoogleDriveId,
+  urlToBlob,
 } from '../services/unifiedGoogleService';
+import { DEFAULT_PRINTIFY_VARIANT_MAP } from '../design-studio/services/listingData';
 import { UnifiedProductRecord } from '../types/unifiedWorkflow';
+import {
+  buildMasterPrintifyPinterestRows,
+  serializePinterestCsv,
+  downloadCsvFile,
+} from '../services/pinterestCsvService';
 
 interface ExcelPrintifyImporterProps {
   onImportToWorkflow?: (products: UnifiedProductRecord[]) => void;
@@ -83,10 +94,58 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
   const [blueprints, setBlueprints] = useState<any[]>([]);
   const [selectedBlueprintId, setSelectedBlueprintId] = useState<string>('269'); // Tough Phone Cases
   const [providers, setProviders] = useState<any[]>([]);
-  const [selectedProviderId, setSelectedProviderId] = useState<string>('1'); // Spoke Custom Products
+  const [selectedProviderId, setSelectedProviderId] = useState<string>('99'); // Printify Choice (Provider 99)
   const [variants, setVariants] = useState<any[]>([]);
   const [selectedVariantIds, setSelectedVariantIds] = useState<number[]>([]);
-  const [defaultPrice, setDefaultPrice] = useState<number>(24.99);
+  const [defaultPrice, setDefaultPrice] = useState<number>(22.20);
+
+  // Blueprint Search State & Combobox
+  const [blueprintSearchQuery, setBlueprintSearchQuery] = useState<string>('');
+  const [isBlueprintDropdownOpen, setIsBlueprintDropdownOpen] = useState<boolean>(false);
+  const [blueprintCategoryFilter, setBlueprintCategoryFilter] = useState<'all' | 'cases' | 'apparel' | 'drinkware'>('all');
+  const blueprintDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close blueprint dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        blueprintDropdownRef.current &&
+        !blueprintDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsBlueprintDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedBlueprint = useMemo(() => {
+    return blueprints.find((bp) => String(bp.id) === String(selectedBlueprintId)) || null;
+  }, [blueprints, selectedBlueprintId]);
+
+  const filteredBlueprints = useMemo(() => {
+    const q = blueprintSearchQuery.trim().toLowerCase();
+    return blueprints.filter((bp) => {
+      const title = (bp.title || '').toLowerCase();
+      const id = String(bp.id || '');
+      const brand = (bp.brand || '').toLowerCase();
+      const model = (bp.model || '').toLowerCase();
+      const matchesSearch = !q || title.includes(q) || id.includes(q) || brand.includes(q) || model.includes(q);
+
+      if (!matchesSearch) return false;
+
+      if (blueprintCategoryFilter === 'cases') {
+        return /case|phone|cover/i.test(title);
+      }
+      if (blueprintCategoryFilter === 'apparel') {
+        return /shirt|tee|hoodie|tank|sweat/i.test(title);
+      }
+      if (blueprintCategoryFilter === 'drinkware') {
+        return /mug|cup|bottle|tumbler/i.test(title);
+      }
+      return true;
+    });
+  }, [blueprints, blueprintSearchQuery, blueprintCategoryFilter]);
 
   // Loading states
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
@@ -133,7 +192,9 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
     if (googleEmailProp) setActiveGoogleEmail(googleEmailProp);
   }, [googleTokenProp, googleEmailProp]);
 
-  const [masterDriveFolderUrl, setMasterDriveFolderUrl] = useState<string>('');
+  const [masterDriveFolderUrl, setMasterDriveFolderUrl] = useState<string>(
+    'https://drive.google.com/drive/folders/108aZnUBJ64BJdeaF6DTou9U5tyrthksO?usp=sharing'
+  );
   const [isResolvingDrive, setIsResolvingDrive] = useState(false);
   const [driveResolveMessage, setDriveResolveMessage] = useState<string>('');
 
@@ -143,6 +204,33 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
   // Notifications
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
+
+  // Auto-load CaseCraft_Master_5_Designs_Catalog.xlsx on initial mount
+  useEffect(() => {
+    const autoLoadMasterCatalog = async () => {
+      try {
+        const res = await fetch('/CaseCraft_Master_5_Designs_Catalog.xlsx');
+        if (!res.ok) return;
+        const buf = await res.arrayBuffer();
+        const result = await parseExcelFile(buf, 'CaseCraft_Master_5_Designs_Catalog.xlsx');
+        if (result.rows.length > 0) {
+          setParseResult(result);
+          setSelectedSheet(result.activeSheet);
+          setColumnMapping(result.mapping);
+          setRows(result.rows);
+          if (result.detectedDriveFolderUrl) {
+            setMasterDriveFolderUrl(result.detectedDriveFolderUrl);
+          }
+          setGlobalSuccess(
+            `Auto-loaded ${result.totalRows} master designs from CaseCraft_Master_5_Designs_Catalog.xlsx ($22.20, Blueprint 269, Provider 99, 34 Models) — ready to push to Printify!`
+          );
+        }
+      } catch {
+        // Ignore if catalog not yet generated
+      }
+    };
+    autoLoadMasterCatalog();
+  }, []);
 
   // Load shops and initial catalog when token is present
   useEffect(() => {
@@ -192,7 +280,14 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
         const provList = Array.isArray(provRes) ? provRes : [];
         setProviders(provList);
         if (provList.length > 0) {
-          setSelectedProviderId(String(provList[0].id));
+          // If blueprint 269 (Tough Phone Cases) or provider 99 exists, prioritize Provider 99 (Printify Choice)
+          const choiceProv = provList.find((p: any) => String(p.id) === '99');
+          if (choiceProv) {
+            setSelectedProviderId('99');
+          } else {
+            const existing = provList.find((p: any) => String(p.id) === selectedProviderId);
+            setSelectedProviderId(existing ? String(existing.id) : String(provList[0].id));
+          }
         }
       } catch (err: any) {
         console.warn('Failed to load providers:', err);
@@ -330,6 +425,9 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
       {
         index: 0,
         rawRow: {
+          'Product Template': 'Tough Phone Cases',
+          'Print Provider': 'Printify Choice',
+          'Variants / Phone Models': 'All 34 Tough Case Models',
           'Google Drive Folder': 'https://drive.google.com/drive/folders/1aBcDeFgHiJkLmNoPqRsTuVwXyZ',
           'Design File Name': 'fox_stained_glass.png',
         },
@@ -349,6 +447,13 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
         imageUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=1200&q=80',
         price: 24.99,
         sku: 'FOX-VITRAIL-TOUGH',
+        productTemplate: 'Tough Phone Cases',
+        printProvider: 'Printify Choice',
+        blueprintId: '269',
+        printProviderId: '99',
+        variantsRaw: 'All 34 Tough Case Models (All iPhones & Samsung)',
+        variantModels: Object.keys(DEFAULT_PRINTIFY_VARIANT_MAP),
+        variantIds: Object.values(DEFAULT_PRINTIFY_VARIANT_MAP).map(Number),
         driveFolderUrl: 'https://drive.google.com/drive/folders/1aBcDeFgHiJkLmNoPqRsTuVwXyZ',
         driveFileName: 'fox_stained_glass.png',
         isDriveResolved: true,
@@ -357,6 +462,9 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
       {
         index: 1,
         rawRow: {
+          'Product Template': 'Tough Phone Cases',
+          'Print Provider': 'Printify Choice',
+          'Variants / Phone Models': 'iPhone 18 Pro Max, iPhone 18 Pro, iPhone 17 Pro Max, iPhone 17 Pro, iPhone 16 Pro Max, iPhone 15 Pro Max',
           'Google Drive Folder': 'https://drive.google.com/drive/folders/1aBcDeFgHiJkLmNoPqRsTuVwXyZ',
           'Design File Name': 'wildflower_meadow.png',
         },
@@ -375,6 +483,13 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
         imageUrl: 'https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=1200&q=80',
         price: 24.99,
         sku: 'FLORAL-MEADOW-002',
+        productTemplate: 'Tough Phone Cases',
+        printProvider: 'Printify Choice',
+        blueprintId: '269',
+        printProviderId: '99',
+        variantsRaw: 'iPhone 18 Pro Max, iPhone 18 Pro, iPhone 17 Pro Max, iPhone 17 Pro, iPhone 16 Pro Max, iPhone 15 Pro Max',
+        variantModels: ['iPhone 18 Pro Max', 'iPhone 18 Pro', 'iPhone 17 Pro Max', 'iPhone 17 Pro', 'iPhone 16 Pro Max', 'iPhone 15 Pro Max'],
+        variantIds: [423468, 423467, 130117, 130116, 112813, 103564],
         driveFolderUrl: 'https://drive.google.com/drive/folders/1aBcDeFgHiJkLmNoPqRsTuVwXyZ',
         driveFileName: 'wildflower_meadow.png',
         isDriveResolved: true,
@@ -383,6 +498,9 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
       {
         index: 2,
         rawRow: {
+          'Product Template': 'Tough Phone Cases',
+          'Print Provider': 'Printify Choice',
+          'Variants / Phone Models': 'Samsung Galaxy S26, Samsung Galaxy S25, Samsung Galaxy S24, Samsung Galaxy S23',
           'Google Drive Folder': 'https://drive.google.com/drive/folders/1aBcDeFgHiJkLmNoPqRsTuVwXyZ',
           'Design File Name': 'cosmic_nebula.png',
         },
@@ -401,6 +519,13 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
         imageUrl: 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=1200&q=80',
         price: 26.99,
         sku: 'COSMIC-NEBULA-003',
+        productTemplate: 'Tough Phone Cases',
+        printProvider: 'Printify Choice',
+        blueprintId: '269',
+        printProviderId: '99',
+        variantsRaw: 'Samsung Galaxy S26, Samsung Galaxy S25, Samsung Galaxy S24, Samsung Galaxy S23',
+        variantModels: ['Samsung Galaxy S26', 'Samsung Galaxy S25', 'Samsung Galaxy S24', 'Samsung Galaxy S23'],
+        variantIds: [254190, 125531, 105527, 105528],
         driveFolderUrl: 'https://drive.google.com/drive/folders/1aBcDeFgHiJkLmNoPqRsTuVwXyZ',
         driveFileName: 'cosmic_nebula.png',
         isDriveResolved: true,
@@ -408,10 +533,15 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
       },
       {
         index: 3,
-        rawRow: {},
-        title: 'Japanese Wave Art Minimalist Phone Case',
+        rawRow: {
+          'Product ID': 'CASE-004',
+          'Product Template': 'Tough Phone Cases',
+          'Print Provider': 'Printify Choice',
+          'Variants / Phone Models': 'All iPhones (18 Pro Max down to iPhone 11)',
+        },
+        title: 'Japanese Wave Art Minimalist Tough Phone Case',
         description:
-          'Traditional ukiyo-e ocean wave woodblock print aesthetic rendered in modern indigo blue and seafoam white. Matte textured surface with reinforced bumper corners.',
+          'Traditional ukiyo-e ocean wave woodblock print aesthetic rendered in modern indigo blue and seafoam white. Matte textured surface with reinforced bumper corners and dual-layer defense.',
         tags: [
           'great wave',
           'japanese art',
@@ -424,6 +554,15 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
         imageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200&q=80',
         price: 24.99,
         sku: 'JAPAN-WAVE-004',
+        productTemplate: 'Tough Phone Cases',
+        printProvider: 'Printify Choice',
+        blueprintId: '269',
+        printProviderId: '99',
+        variantsRaw: 'All iPhones (18 Pro Max down to iPhone 11)',
+        variantModels: Object.keys(DEFAULT_PRINTIFY_VARIANT_MAP).filter((m) => m.startsWith('iPhone')),
+        variantIds: Object.entries(DEFAULT_PRINTIFY_VARIANT_MAP)
+          .filter(([m]) => m.startsWith('iPhone'))
+          .map(([, id]) => Number(id)),
         status: 'pending',
       },
     ];
@@ -431,10 +570,22 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
     setRows(sampleRows);
     setMasterDriveFolderUrl('https://drive.google.com/drive/folders/1aBcDeFgHiJkLmNoPqRsTuVwXyZ');
     setParseResult({
-      fileName: 'Sample_Template_Reference.xlsx',
-      sheetNames: ['Printify_Products'],
+      fileName: 'Printify_Tough_Cases_Bulk_Import_Template.xlsx',
+      sheetNames: ['Printify_Products', 'Tough_Cases_Models_269', 'Other_Case_Blueprints'],
       activeSheet: 'Printify_Products',
-      headers: ['Product ID', 'Title', 'Description', 'Tags', 'Design Image', 'Google Drive Folder', 'Price', 'SKU'],
+      headers: [
+        'Product ID',
+        'Product Template',
+        'Print Provider',
+        'Variants / Phone Models',
+        'Title',
+        'Description',
+        'Tags',
+        'Design Image',
+        'Google Drive Folder',
+        'Price',
+        'SKU',
+      ],
       mapping: {
         titleColumn: 'Title',
         descriptionColumn: 'Description',
@@ -443,6 +594,9 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
         driveFolderColumn: 'Google Drive Folder',
         priceColumn: 'Price',
         skuColumn: 'SKU',
+        productTemplateColumn: 'Product Template',
+        providerColumn: 'Print Provider',
+        variantsColumn: 'Variants / Phone Models',
       },
       rows: sampleRows,
       totalRows: 4,
@@ -453,7 +607,7 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
       warnings: [],
     });
     setSelectedRowIndices(new Set());
-    setGlobalSuccess('Loaded 4 sample reference products with Google Drive folder links!');
+    setGlobalSuccess('Loaded 4 sample Tough Phone Case reference products with configurable variants!');
   };
 
   // Start Sequential Execution
@@ -488,7 +642,7 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
     }
 
     const blueprintIdToUse = selectedBlueprintId || '269';
-    const providerIdToUse = selectedProviderId || '1';
+    const providerIdToUse = selectedProviderId || '99';
 
     const itemsToProcess = (targetRows || rows).filter((r) => r.status !== 'completed');
     if (itemsToProcess.length === 0) {
@@ -707,6 +861,74 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
     }
   };
 
+  // Upload locally generated designs directly to the user's Google Drive folder
+  const [isUploadingToDrive, setIsUploadingToDrive] = useState(false);
+  const [uploadToDriveProgress, setUploadToDriveProgress] = useState<string>('');
+
+  const handleUploadLocalDesignsToDrive = async () => {
+    let token = activeGoogleToken;
+    if (!token) {
+      try {
+        setIsConnectingGoogle(true);
+        const res = await connectGoogleDriveAndSheets();
+        token = res.token;
+        setActiveGoogleToken(res.token);
+        setActiveGoogleEmail(res.email);
+      } catch (err: any) {
+        const msg = err?.message || '';
+        if (!msg.includes('closed') && !msg.includes('cancelled') && !msg.includes('popup')) {
+          setGoogleConnectError(err.message || 'Google Drive sign-in was cancelled or failed.');
+        }
+        setIsConnectingGoogle(false);
+        return;
+      } finally {
+        setIsConnectingGoogle(false);
+      }
+    }
+
+    if (!token) return;
+
+    const targetUrl =
+      masterDriveFolderUrl.trim() ||
+      'https://drive.google.com/drive/folders/108aZnUBJ64BJdeaF6DTou9U5tyrthksO?usp=sharing';
+    const driveMatch = extractGoogleDriveId(targetUrl);
+    const folderId = driveMatch ? driveMatch.id : '108aZnUBJ64BJdeaF6DTou9U5tyrthksO';
+
+    setIsUploadingToDrive(true);
+    setUploadToDriveProgress('Preparing designs for upload...');
+    setGlobalError(null);
+    setGlobalSuccess(null);
+
+    const localDesigns = [
+      { name: 'stained_glass_fox.jpg', url: '/designs/stained_glass_fox.jpg' },
+      { name: 'anime_wave_pirate.jpg', url: '/designs/anime_wave_pirate.jpg' },
+      { name: 'celestial_witch_wolf.jpg', url: '/designs/celestial_witch_wolf.jpg' },
+      { name: 'kitsune_samurai.jpg', url: '/designs/kitsune_samurai.jpg' },
+    ];
+
+    try {
+      let uploaded = 0;
+      for (let i = 0; i < localDesigns.length; i++) {
+        const item = localDesigns[i];
+        setUploadToDriveProgress(`Uploading [${i + 1}/${localDesigns.length}] ${item.name} to Google Drive...`);
+        const blob = await urlToBlob(item.url);
+        await uploadFileToFolder(token, blob, item.name, folderId);
+        uploaded++;
+      }
+      setGlobalSuccess(
+        `Successfully uploaded all ${uploaded} newly generated designs directly into your Google Drive folder (${folderId})! They are now visible in Google Drive.`
+      );
+      if (rows.length > 0) {
+        handleResolveDriveImages();
+      }
+    } catch (err: any) {
+      setGlobalError(`Upload to Google Drive failed: ${err.message}`);
+    } finally {
+      setIsUploadingToDrive(false);
+      setUploadToDriveProgress('');
+    }
+  };
+
   // Single Row Resolve from Google Drive
   const handleResolveSingleDriveImage = async (rowIndex: number) => {
     const targetRow = rows[rowIndex];
@@ -922,6 +1144,34 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={() => {
+                const rows30 = buildMasterPrintifyPinterestRows();
+                downloadCsvFile(serializePinterestCsv(rows30), 'CaseCraft_Pinterest_30_All_6_Mockups_Pins.csv');
+                setGlobalSuccess('Downloaded CaseCraft_Pinterest_30_All_6_Mockups_Pins.csv (5 Designs × 6 Selected Printify Mockups = 30 Pins)!');
+              }}
+              className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 px-3.5 py-2 text-xs font-bold text-white shadow-md shadow-rose-950/60 transition cursor-pointer"
+              title="Download ready-to-publish Pinterest Bulk Create CSV for all 5 designs across your 6 selected Printify mockups"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Download Pinterest CSV (6 Mockups • 30 Pins)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const rows5 = buildMasterPrintifyPinterestRows(['front-iphone-18-pro-max']);
+                downloadCsvFile(serializePinterestCsv(rows5), 'CaseCraft_Pinterest_5_Master_Pins.csv');
+                setGlobalSuccess('Downloaded CaseCraft_Pinterest_5_Master_Pins.csv (5 Designs × Primary Mockup = 5 Pins)!');
+              }}
+              className="flex items-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-950/50 hover:bg-rose-900/60 px-3 py-2 text-xs font-semibold text-rose-200 transition cursor-pointer"
+              title="Download ready-to-publish Pinterest Bulk Create CSV with 1 primary mockup pin per design"
+            >
+              <Download className="h-3.5 w-3.5 text-rose-400" />
+              <span>Pinterest CSV (5 Primary Pins)</span>
+            </button>
+
+            <button
+              type="button"
               onClick={generateReferenceExcelFile}
               className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 transition cursor-pointer"
               title="Download official sample Excel template"
@@ -932,21 +1182,11 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
 
             <button
               type="button"
-              onClick={generateReferenceCsvFile}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 transition cursor-pointer"
-              title="Download official sample CSV template"
-            >
-              <Download className="h-3.5 w-3.5 text-indigo-400" />
-              <span>Download CSV Template</span>
-            </button>
-
-            <button
-              type="button"
               onClick={handleLoadSampleData}
               className="flex items-center gap-1.5 rounded-lg border border-purple-500/40 bg-purple-950/40 hover:bg-purple-900/50 px-3.5 py-2 text-xs font-semibold text-purple-200 transition cursor-pointer"
             >
               <Sparkles className="h-3.5 w-3.5 text-purple-400" />
-              <span>Load Demo Reference Data</span>
+              <span>Reload 5 Master Designs</span>
             </button>
           </div>
         </div>
@@ -1046,27 +1286,153 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
               </select>
             </div>
 
-            {/* Blueprint / Product Model */}
-            <div>
-              <label className="text-[11px] font-semibold text-slate-400 block mb-1">
-                Product Template (Blueprint) *
-              </label>
-              <select
-                value={selectedBlueprintId}
-                onChange={(e) => setSelectedBlueprintId(e.target.value)}
-                disabled={blueprints.length === 0}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-emerald-500 focus:outline-none"
-              >
-                {blueprints.length === 0 ? (
-                  <option value="269">Tough Phone Cases (Blueprint 269)</option>
-                ) : (
-                  blueprints.map((bp) => (
-                    <option key={bp.id} value={String(bp.id)}>
-                      {bp.title}
-                    </option>
-                  ))
+            {/* Blueprint / Product Model with Search Bar */}
+            <div className="relative" ref={blueprintDropdownRef}>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-semibold text-slate-400 block">
+                  Product Template (Blueprint) *
+                </label>
+                {selectedBlueprint && (
+                  <span className="text-[10px] font-mono text-emerald-400 font-medium">
+                    ID: {selectedBlueprint.id}
+                  </span>
                 )}
-              </select>
+              </div>
+
+              {/* Search Bar / Trigger Input */}
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={
+                    isBlueprintDropdownOpen
+                      ? blueprintSearchQuery
+                      : selectedBlueprint
+                      ? `${selectedBlueprint.title} (ID: ${selectedBlueprint.id})`
+                      : blueprints.length > 0
+                      ? `Blueprint ${selectedBlueprintId}`
+                      : 'Tough Phone Cases (Blueprint 269)'
+                  }
+                  onChange={(e) => {
+                    setBlueprintSearchQuery(e.target.value);
+                    if (!isBlueprintDropdownOpen) setIsBlueprintDropdownOpen(true);
+                  }}
+                  onFocus={() => {
+                    setIsBlueprintDropdownOpen(true);
+                  }}
+                  placeholder="Search template (e.g. 'tough', 'phone', '269')..."
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 pl-8 pr-16 py-2 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none transition-colors"
+                />
+                <div className="absolute right-2 top-2 flex items-center gap-1">
+                  {blueprintSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setBlueprintSearchQuery('')}
+                      className="text-slate-400 hover:text-white p-0.5 rounded"
+                      title="Clear search"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsBlueprintDropdownOpen((prev) => !prev)}
+                    className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+                    title={isBlueprintDropdownOpen ? 'Close list' : 'Browse templates'}
+                  >
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 transition-transform ${
+                        isBlueprintDropdownOpen ? 'rotate-180 text-emerald-400' : ''
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* Dropdown Menu with Search Results */}
+              {isBlueprintDropdownOpen && (
+                <div className="absolute left-0 right-0 z-50 mt-1 rounded-xl border border-slate-700 bg-slate-950/95 backdrop-blur-md p-2 shadow-2xl">
+                  {/* Category Filter Chips */}
+                  <div className="flex items-center gap-1 mb-2 pb-1.5 border-b border-slate-800 overflow-x-auto text-[10px]">
+                    {(
+                      [
+                        { id: 'all', label: 'All' },
+                        { id: 'cases', label: 'Phone Cases' },
+                        { id: 'apparel', label: 'Apparel' },
+                        { id: 'drinkware', label: 'Drinkware' },
+                      ] as const
+                    ).map((cat) => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setBlueprintCategoryFilter(cat.id)}
+                        className={`rounded-md px-2 py-0.5 transition-colors shrink-0 cursor-pointer ${
+                          blueprintCategoryFilter === cat.id
+                            ? 'bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/40'
+                            : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    ))}
+                    <span className="ml-auto text-[10px] text-slate-500 pl-1 shrink-0">
+                      {filteredBlueprints.length} found
+                    </span>
+                  </div>
+
+                  {/* List of Filtered Blueprints */}
+                  <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
+                    {filteredBlueprints.length === 0 ? (
+                      <div className="p-3 text-center text-xs text-slate-400">
+                        <p>No templates matching "{blueprintSearchQuery}"</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBlueprintSearchQuery('');
+                            setBlueprintCategoryFilter('all');
+                          }}
+                          className="mt-1 text-[11px] text-emerald-400 hover:underline cursor-pointer"
+                        >
+                          Clear search & show all
+                        </button>
+                      </div>
+                    ) : (
+                      filteredBlueprints.map((bp) => {
+                        const isSelected = String(bp.id) === String(selectedBlueprintId);
+                        return (
+                          <button
+                            key={bp.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedBlueprintId(String(bp.id));
+                              setIsBlueprintDropdownOpen(false);
+                              setBlueprintSearchQuery('');
+                            }}
+                            className={`w-full flex items-center justify-between text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-emerald-950/70 text-emerald-200 border border-emerald-700/60'
+                                : 'text-slate-300 hover:bg-slate-900 hover:text-white'
+                            }`}
+                          >
+                            <div className="min-w-0 pr-2">
+                              <p className="font-medium truncate">{bp.title}</p>
+                              {bp.brand && (
+                                <p className="text-[10px] text-slate-500 truncate">{bp.brand}</p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="font-mono text-[10px] rounded bg-slate-800/80 px-1.5 py-0.5 text-slate-400">
+                                ID: {bp.id}
+                              </span>
+                              {isSelected && <Check className="h-3.5 w-3.5 text-emerald-400" />}
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Print Provider */}
@@ -1212,6 +1578,12 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
               </span>
               <span className="rounded bg-indigo-950 border border-indigo-800/60 px-2 py-0.5 text-indigo-300">
                 Image &rarr; <strong>{columnMapping.imageColumn || 'Not mapped'}</strong>
+              </span>
+              <span className="rounded bg-purple-950 border border-purple-800/60 px-2 py-0.5 text-purple-300">
+                Template &rarr; <strong>{columnMapping.productTemplateColumn || columnMapping.blueprintIdColumn || 'Tough Cases [269]'}</strong>
+              </span>
+              <span className="rounded bg-teal-950 border border-teal-800/60 px-2 py-0.5 text-teal-300">
+                Variants &rarr; <strong>{columnMapping.variantsColumn || 'All 34 Models'}</strong>
               </span>
             </div>
 
@@ -1369,6 +1741,24 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
           </div>
 
           <div className="md:col-span-4 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={handleUploadLocalDesignsToDrive}
+              disabled={isUploadingToDrive || isResolvingDrive}
+              className="w-full flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-emerald-950 transition cursor-pointer"
+            >
+              {isUploadingToDrive ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
+              <span>
+                {isUploadingToDrive
+                  ? uploadToDriveProgress || 'Uploading to Drive...'
+                  : '📤 Upload 4 Generated Designs to this Drive Folder'}
+              </span>
+            </button>
+
             <button
               type="button"
               onClick={handleResolveDriveImages}
@@ -1607,6 +1997,8 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
                   <th className="py-2.5 px-3 w-10">#</th>
                   <th className="py-2.5 px-3 w-14">Artwork</th>
                   <th className="py-2.5 px-3">Title</th>
+                  <th className="py-2.5 px-3 w-40">Product Template</th>
+                  <th className="py-2.5 px-3 w-44">Variants / Models</th>
                   <th className="py-2.5 px-3">Description</th>
                   <th className="py-2.5 px-3">Tags</th>
                   <th className="py-2.5 px-3 w-20">Price</th>
@@ -1744,6 +2136,46 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
                               <span className="truncate">{row.driveError}</span>
                             </span>
                           )}
+                        </div>
+                      </td>
+
+                      {/* Product Template Column */}
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="inline-flex items-center gap-1 rounded bg-purple-950/80 border border-purple-700/60 px-2 py-0.5 text-[10px] font-semibold text-purple-300">
+                            <Layers className="h-3 w-3 text-purple-400" />
+                            <span>{row.productTemplate || 'Tough Phone Cases'}</span>
+                          </span>
+                          <span className="text-[9px] text-slate-400 font-mono">
+                            BP: {row.blueprintId || '269'} &bull; {row.printProvider || 'Printify Choice'} ({row.printProviderId || '99'})
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Variants / Models Column */}
+                      <td className="py-2.5 px-3 max-w-[200px]">
+                        <div className="flex flex-col gap-0.5">
+                          <span
+                            className="inline-flex items-center gap-1 rounded bg-teal-950/80 border border-teal-700/60 px-2 py-0.5 text-[10px] font-semibold text-teal-300 truncate cursor-help"
+                            title={
+                              row.variantModels && row.variantModels.length > 0
+                                ? row.variantModels.join(', ')
+                                : 'All 34 Tough Case Models'
+                            }
+                          >
+                            <Sparkles className="h-2.5 w-2.5 text-teal-400 shrink-0" />
+                            <span className="truncate">
+                              {row.variantIds && row.variantIds.length > 0
+                                ? `${row.variantIds.length} Models`
+                                : '34 Models'}
+                            </span>
+                          </span>
+                          <span
+                            className="text-[9px] text-slate-400 truncate max-w-[190px]"
+                            title={row.variantsRaw || 'All 34 Tough Case Models'}
+                          >
+                            {row.variantsRaw || 'All 34 Tough Case Models'}
+                          </span>
                         </div>
                       </td>
 
@@ -2048,6 +2480,69 @@ export const ExcelPrintifyImporter: React.FC<ExcelPrintifyImporterProps> = ({
                   className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
                 >
                   <option value="">-- Default Price (${defaultPrice.toFixed(2)}) --</option>
+                  {parseResult.headers.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Product Template Column */}
+              <div>
+                <label className="font-semibold text-slate-300 block mb-1">Product Template / Blueprint Column (Optional)</label>
+                <select
+                  value={columnMapping.productTemplateColumn || columnMapping.blueprintIdColumn || ''}
+                  onChange={(e) =>
+                    setColumnMapping({
+                      ...columnMapping,
+                      productTemplateColumn: e.target.value || undefined,
+                      blueprintIdColumn: e.target.value || undefined,
+                    })
+                  }
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
+                >
+                  <option value="">-- Default Template (Tough Phone Cases [269]) --</option>
+                  {parseResult.headers.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Print Provider Column */}
+              <div>
+                <label className="font-semibold text-slate-300 block mb-1">Print Provider Column (Optional)</label>
+                <select
+                  value={columnMapping.providerColumn || columnMapping.providerIdColumn || ''}
+                  onChange={(e) =>
+                    setColumnMapping({
+                      ...columnMapping,
+                      providerColumn: e.target.value || undefined,
+                      providerIdColumn: e.target.value || undefined,
+                    })
+                  }
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
+                >
+                  <option value="">-- Default Provider (Printify Choice [99]) --</option>
+                  {parseResult.headers.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Variants / Models Column */}
+              <div>
+                <label className="font-semibold text-slate-300 block mb-1">Variants / Phone Models Column (Optional)</label>
+                <select
+                  value={columnMapping.variantsColumn || ''}
+                  onChange={(e) => setColumnMapping({ ...columnMapping, variantsColumn: e.target.value || undefined })}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
+                >
+                  <option value="">-- Default (All 34 Tough Case Models) --</option>
                   {parseResult.headers.map((h) => (
                     <option key={h} value={h}>
                       {h}

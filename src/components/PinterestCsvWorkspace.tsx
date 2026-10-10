@@ -53,6 +53,8 @@ import {
   mapProductToPinterestPins,
   downloadCsvFile,
   SAMPLE_PINTEREST_CSV_ROWS,
+  PRINTIFY_6_SELECTED_MOCKUPS,
+  buildMasterPrintifyPinterestRows,
   optimizePinterestPinsWithAi,
   localSummarizeDescription,
   localOptimizeTitle,
@@ -93,8 +95,11 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
   onConnectGoogle,
   onOpenGoogleSettings,
 }) => {
-  // Current active rows in workspace
-  const [rows, setRows] = useState<PinterestCsvRow[]>([]);
+  // Current active rows in workspace (pre-loaded with the 5 Master Designs x 6 Selected Printify Mockups)
+  const [rows, setRows] = useState<PinterestCsvRow[]>(() => SAMPLE_PINTEREST_CSV_ROWS);
+  const [selectedPrintifyMockupKeys, setSelectedPrintifyMockupKeys] = useState<string[]>(() =>
+    PRINTIFY_6_SELECTED_MOCKUPS.map((m) => m.key)
+  );
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [rawCsvText, setRawCsvText] = useState<string>('');
   const [showRawPreview, setShowRawPreview] = useState<boolean>(false);
@@ -612,15 +617,65 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
 
   // Download official CSV
   const handleDownloadCsv = () => {
-    const filename = `pinterest_bulk_pins_${product?.productId || 'export'}_${new Date().toISOString().split('T')[0]}.csv`;
+    const filename = `CaseCraft_Pinterest_Bulk_Pins_${rows.length}_Pins.csv`;
     downloadCsvFile(currentSerializedCsv, filename);
   };
 
-  // Reset to sample template
+  // Toggle individual Printify mockup view in the 6-mockup selector
+  const handleTogglePrintifyMockupKey = (key: string) => {
+    setSelectedPrintifyMockupKeys((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      if (next.length > 0) {
+        const updatedRows = buildMasterPrintifyPinterestRows(next, {
+          boardName,
+          destinationLink,
+          startDate,
+        });
+        setRows(updatedRows);
+        setRowMetadata({});
+        setSuccessMessage(
+          `Updated workspace to ${updatedRows.length} Pinterest pins (${next.length} selected Printify mockup view${next.length === 1 ? '' : 's'} × 5 Master Designs).`
+        );
+      }
+      return next;
+    });
+  };
+
+  // Download all 6 selected Printify mockups CSV (30 Pins) directly
+  const handleDownloadAll6MockupsCsv = () => {
+    const allKeys = PRINTIFY_6_SELECTED_MOCKUPS.map((m) => m.key);
+    const all30Rows = buildMasterPrintifyPinterestRows(allKeys, {
+      boardName,
+      destinationLink,
+      startDate,
+    });
+    setSelectedPrintifyMockupKeys(allKeys);
+    setRows(all30Rows);
+    downloadCsvFile(serializePinterestCsv(all30Rows), 'CaseCraft_Pinterest_30_All_6_Mockups_Pins.csv');
+    setSuccessMessage('Downloaded CaseCraft_Pinterest_30_All_6_Mockups_Pins.csv (5 Master Designs × 6 Selected Printify Mockups = 30 Pins)!');
+  };
+
+  // Download Primary Mockup Only CSV (5 Pins — Front, iPhone 18 Pro Max) directly
+  const handleDownloadPrimary5MockupsCsv = () => {
+    const primaryKey = ['front-iphone-18-pro-max'];
+    const primary5Rows = buildMasterPrintifyPinterestRows(primaryKey, {
+      boardName,
+      destinationLink,
+      startDate,
+    });
+    setSelectedPrintifyMockupKeys(primaryKey);
+    setRows(primary5Rows);
+    downloadCsvFile(serializePinterestCsv(primary5Rows), 'CaseCraft_Pinterest_5_Master_Pins.csv');
+    setSuccessMessage('Downloaded CaseCraft_Pinterest_5_Master_Pins.csv (5 Master Designs × Primary Mockup = 5 Pins)!');
+  };
+
+  // Reset to 5 Master Designs × 6 Selected Printify Mockups
   const handleResetSample = () => {
-    setRows(SAMPLE_PINTEREST_CSV_ROWS);
+    const allKeys = PRINTIFY_6_SELECTED_MOCKUPS.map((m) => m.key);
+    setSelectedPrintifyMockupKeys(allKeys);
+    setRows(buildMasterPrintifyPinterestRows(allKeys, { boardName, destinationLink, startDate }));
     setRowMetadata({});
-    setSuccessMessage('Loaded Pinterest sample template.');
+    setSuccessMessage('Loaded all 5 Master Designs × 6 Selected Printify Mockups (30 Pins).');
   };
 
   // Google Sheets Integration State
@@ -954,6 +1009,82 @@ export const PinterestCsvWorkspace: React.FC<PinterestCsvWorkspaceProps> = ({
             <p>{successMessage}</p>
           </div>
         )}
+
+        {/* Printify 6-Mockup Selector & Ready-to-Publish Pinterest CSV Banner */}
+        <div className="mt-4 rounded-xl border border-rose-500/40 bg-gradient-to-r from-rose-950/60 via-slate-900 to-amber-950/40 p-4 shadow-lg space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-600/30 border border-rose-500/40 text-rose-300">
+                <CheckCheck className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-rose-200">
+                    Ready-to-Publish Pinterest CSV • 5 Master Designs × 6 Selected Printify Mockups
+                  </h3>
+                  <span className="rounded bg-emerald-500/20 text-[10px] font-mono font-semibold text-emerald-300 px-2 py-0.5 border border-emerald-500/30">
+                    Printify CDN Live (HTTP 200)
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  Select which of your 6 Printify Mockup views to include in your Pinterest Bulk Create CSV, or download the pre-built CSV files with 1 click:
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadAll6MockupsCsv}
+                className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 px-3.5 py-2 text-xs font-bold text-white shadow-md shadow-rose-950/60 transition cursor-pointer"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>Download 6-Mockup CSV (30 Pins)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadPrimary5MockupsCsv}
+                className="flex items-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-950/70 hover:bg-rose-900/80 px-3.5 py-2 text-xs font-semibold text-rose-200 transition cursor-pointer"
+              >
+                <Download className="h-3.5 w-3.5 text-rose-400" />
+                <span>Download Primary Mockup CSV (5 Pins)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 6 Printify Mockup Toggle Pills */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6 pt-1">
+            {PRINTIFY_6_SELECTED_MOCKUPS.map((m) => {
+              const isChecked = selectedPrintifyMockupKeys.includes(m.key);
+              return (
+                <button
+                  key={m.key}
+                  type="button"
+                  onClick={() => handleTogglePrintifyMockupKey(m.key)}
+                  className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-[11px] font-medium transition cursor-pointer ${
+                    isChecked
+                      ? 'border-rose-500/60 bg-rose-950/60 text-white shadow-sm'
+                      : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    readOnly
+                    className="rounded border-slate-600 bg-slate-900 accent-rose-500 pointer-events-none"
+                  />
+                  <div className="truncate">
+                    <div className="font-semibold truncate">{m.label}</div>
+                    <div className="text-[9px] text-slate-400 font-mono">
+                      cam:{m.cameraLabel} • v:{m.variantId}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Status Metrics Ribbon */}
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">

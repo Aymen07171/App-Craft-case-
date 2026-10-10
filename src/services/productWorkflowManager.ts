@@ -62,9 +62,23 @@ export const createInitialProductRecord = (
     pricing: createPricingForProduct(22.20),
     printify: {
       blueprintId: '269', // Printify Tough Phone Cases Blueprint (Real catalog ID: 269)
-      printProviderId: '1', // SPOKE Custom Products / Printify Choice provider
-      variantIds: [],
-      selectedModels: ['iPhone 15 Pro', 'iPhone 15 Pro Max', 'Samsung Galaxy S24'],
+      printProviderId: '99', // Printify Choice / SPOKE provider
+      variantIds: [
+        '423468', '423467', '130117', '130116', '130115', '112813', '112812', '112815', '112814',
+        '103564', '103562', '103563', '103561', '93907', '93906', '93908', '93905',
+        '76614', '76613', '76611', '76612', '70874', '70873', '70871', '70872',
+        '62584', '62583', '62582', '254190', '125531', '105527', '105528', '105529', '105530'
+      ],
+      selectedModels: [
+        'iPhone 18 Pro Max', 'iPhone 18 Pro', 'iPhone 17 Pro Max', 'iPhone 17 Pro', 'iPhone 17',
+        'iPhone 16 Pro Max', 'iPhone 16 Pro', 'iPhone 16 Plus', 'iPhone 16',
+        'iPhone 15 Pro Max', 'iPhone 15 Pro', 'iPhone 15 Plus', 'iPhone 15',
+        'iPhone 14 Pro Max', 'iPhone 14 Pro', 'iPhone 14 Plus', 'iPhone 14',
+        'iPhone 13 Pro Max', 'iPhone 13 Pro', 'iPhone 13', 'iPhone 13 Mini',
+        'iPhone 12 Pro Max', 'iPhone 12 Pro', 'iPhone 12', 'iPhone 12 Mini',
+        'iPhone 11 Pro Max', 'iPhone 11 Pro', 'iPhone 11',
+        'Samsung Galaxy S26', 'Samsung Galaxy S25', 'Samsung Galaxy S24', 'Samsung Galaxy S23', 'Samsung Galaxy S22', 'Samsung Galaxy S21'
+      ],
     },
     automation: {
       status: 'DRAFT',

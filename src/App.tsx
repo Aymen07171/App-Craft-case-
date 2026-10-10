@@ -13,6 +13,8 @@ import { PrintifyPublishPanel } from './components/PrintifyPublishPanel';
 import { PrintifyKeyModal } from './components/PrintifyKeyModal';
 import { getStoredPrintifyToken } from './services/printifyClient';
 import { DirectUploaderWorkspace } from './components/DirectUploaderWorkspace';
+import { ProjectBatchStudio } from './components/ProjectBatchStudio';
+import { ProjectDesignItem } from './services/projectPackagingService';
 import { ExcelPrintifyImporter } from './components/ExcelPrintifyImporter';
 import { GeneratedDesign } from './design-studio/types';
 import { PRINTIFY_TEMPLATES } from './data/printifyReferences';
@@ -117,8 +119,8 @@ const generateCaseScene = async (
 };
 
 export default function App() {
-  // 1. Unified Pipeline Step: design -> mockup -> drive -> listing -> export
-  const [pipelineStep, setPipelineStep] = useState<ProductWorkflowStep>('design');
+  // 1. Unified Pipeline Step: batch-studio -> design -> mockup -> drive -> listing -> export
+  const [pipelineStep, setPipelineStep] = useState<ProductWorkflowStep>('batch-studio');
 
   // 2. Centralized Product Record State
   const [product, setProduct] = useState<UnifiedProductRecord>(() => {
@@ -324,6 +326,25 @@ export default function App() {
   // Action button to send design directly to Mockup Generation step
   const handleSendDesignToMockup = (design: GeneratedDesign) => {
     handleSelectDesign(design);
+    setPipelineStep('mockup');
+  };
+
+  const handleSelectProjectDesignForWorkflow = (d: ProjectDesignItem) => {
+    const newDesign: GeneratedDesign = {
+      id: d.id,
+      title: d.title,
+      prompt: d.prompt,
+      imageUrl: d.imageUrl,
+      niche: d.title,
+      createdAt: d.createdAt,
+      aspectRatio: '9:16',
+      placeholders: {},
+    };
+    handleDesignGenerated(newDesign, {
+      productTitle: d.title,
+      productDescription: d.description,
+      etsyTags: d.tags.slice(0, 13),
+    });
     setPipelineStep('mockup');
   };
 
@@ -830,6 +851,16 @@ export default function App() {
 
       {/* Main View Area Rendered by Pipeline Step */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Step 0: Master Project Batch Studio */}
+        {pipelineStep === 'batch-studio' && (
+          <ProjectBatchStudio
+            googleToken={googleToken}
+            googleEmail={googleEmail}
+            onConnectGoogle={() => handleConnectGoogle()}
+            onSelectDesignForWorkflow={handleSelectProjectDesignForWorkflow}
+          />
+        )}
+
         {/* Step 1: Design Generation */}
         {pipelineStep === 'design' && (
           <div className="space-y-6">

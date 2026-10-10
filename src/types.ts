@@ -1,4 +1,4 @@
-export type DeviceType = 'iphone-16-pro' | 'samsung-s25-ultra';
+export type DeviceType = 'iphone-16-pro' | 'samsung-s25-ultra' | string;
 
 export type MockupWorkflowStep =
   | 'upload-design'
@@ -32,9 +32,24 @@ export interface GeneratedWorkflowMockup {
   error?: string;
 }
 
-export type CaseType = 'slim' | 'clear' | 'tough' | 'silicone' | 'protective';
+export type CaseType =
+  | 'tough'
+  | 'slim'
+  | 'clear'
+  | 'wallet'
+  | 'eco-friendly'
+  | 'snap'
+  | 'flexi'
+  | 'silicone'
+  | 'protective';
 
-export type CaseFinish = 'liquid-gloss' | 'velvet-matte' | 'clear-hybrid' | 'tough-armor';
+export type CaseFinish =
+  | 'liquid-gloss'
+  | 'velvet-matte'
+  | 'clear-hybrid'
+  | 'tough-armor'
+  | 'wallet-leather'
+  | 'eco-matte';
 
 export interface CaseTypeOption {
   id: CaseType;

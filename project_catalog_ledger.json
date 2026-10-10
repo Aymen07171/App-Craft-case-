@@ -1,0 +1,107 @@
+{
+  "generated_skus": {
+    "CASE-LOTUSS-001": {
+      "sku": "CASE-LOTUSS-001",
+      "timestamp": "2026-10-10T01:42:38.853760",
+      "image_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\public\\designs\\CASE-LOTUSS-001_9x16_Artwork.png",
+      "file_hash": "08400f9887fc2b0a2b4abe29d5cf3a477a1f0d5a3050cefe0791e96653259f79",
+      "category": "Lotus Spirit"
+    },
+    "CASE-VOLCAN-001": {
+      "sku": "CASE-VOLCAN-001",
+      "timestamp": "2026-10-10T01:42:38.862618",
+      "image_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\public\\designs\\CASE-VOLCAN-001_9x16_Artwork.png",
+      "file_hash": "aaefc86f986c9e0dcc2a494d3703eb402dbe01a7e92936cd078c8a60d9622fd9",
+      "category": "Volcanic Dragon"
+    },
+    "CASE-MOONBU-001": {
+      "sku": "CASE-MOONBU-001",
+      "timestamp": "2026-10-10T01:42:38.882084",
+      "image_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\public\\designs\\CASE-MOONBU-001_9x16_Artwork.png",
+      "file_hash": "180e23ef07b985bc2e0aa8996c4f07da800d8f69db51d5df3e7c362e4c58cddf",
+      "category": "Moon Butterfly Yokai"
+    },
+    "CASE-PHOENI-001": {
+      "sku": "CASE-PHOENI-001",
+      "timestamp": "2026-10-10T01:42:38.896029",
+      "image_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\public\\designs\\CASE-PHOENI-001_9x16_Artwork.png",
+      "file_hash": "cbf325e470970915ae67c139f1801f48b05369354912e07db92d52e33d8d5703",
+      "category": "Phoenix Shrine Guardian"
+    },
+    "CASE-RONINS-001": {
+      "sku": "CASE-RONINS-001",
+      "timestamp": "2026-10-10T01:42:38.910882",
+      "image_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\public\\designs\\CASE-RONINS-001_9x16_Artwork.png",
+      "file_hash": "6a4c04371a6fecc5c53bb14addae0532132a4714422cbebbab8a78eebfad9752",
+      "category": "Ronin Spirit"
+    },
+    "CASE-SEADRA-001": {
+      "sku": "CASE-SEADRA-001",
+      "timestamp": "2026-10-10T01:42:38.917551",
+      "image_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\public\\designs\\CASE-SEADRA-001_9x16_Artwork.png",
+      "file_hash": "f10e48bed5ba2ad30cc7336c6b81469b5b07c18380fd12d4d9c2a0084d3bfe36",
+      "category": "Sea Dragon Guardian"
+    },
+    "CASE-FOREST-001": {
+      "sku": "CASE-FOREST-001",
+      "timestamp": "2026-10-10T13:17:11.139288",
+      "image_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\public\\designs\\CASE-FOREST-001_9x16_Artwork.png",
+      "file_hash": "048bff5fbaef8066a76215ada5144631c4abc1228b3a8afbdb69e294242b5c66",
+      "category": "Forest guardians & mystical creatures"
+    },
+    "CASE-SACRED-001": {
+      "sku": "CASE-SACRED-001",
+      "timestamp": "2026-10-10T13:17:37.205381",
+      "image_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\public\\designs\\CASE-SACRED-001_9x16_Artwork.png",
+      "file_hash": "0b852f2cfdd618388179259c21806052d09517e32937a1286399a91e342b0ae6",
+      "category": "Sacred Stag of the Wildwood"
+    },
+    "CASE-NINETA-001": {
+      "sku": "CASE-NINETA-001",
+      "timestamp": "2026-10-10T13:17:56.829593",
+      "image_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\public\\designs\\CASE-NINETA-001_9x16_Artwork.png",
+      "file_hash": "1a2e8b5212f42f2ea4b0ca7c8657139aebcdf054f0164b0b14764a3ec58639a5",
+      "category": "Nine-Tailed Fox of the Untamed Forest"
+    },
+    "CASE-ROOTCO-001": {
+      "sku": "CASE-ROOTCO-001",
+      "timestamp": "2026-10-10T13:18:14.158003",
+      "image_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\public\\designs\\CASE-ROOTCO-001_9x16_Artwork.png",
+      "file_hash": "36296b4edd12a68b62b047b334be1abb855f6ad9c69cd60722c5ae76a3b928d0",
+      "category": "Ancient Root Colossus"
+    },
+    "CASE-BEARNO-001": {
+      "sku": "CASE-BEARNO-001",
+      "timestamp": "2026-10-10T13:18:33.956910",
+      "image_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\public\\designs\\CASE-BEARNO-001_9x16_Artwork.png",
+      "file_hash": "6f3ba747aeb92c601be3835e8c5ec8985a5f4198d9b3b066ef049ca7917c8e82",
+      "category": "The Ancient Bear of the Wild North"
+    }
+  },
+  "prompt_hashes": {
+    "076fe7ba648d8cb9": "CASE-LOTUSS-001",
+    "37cadec43206ab44": "CASE-VOLCAN-001",
+    "36bcb93f3215872e": "CASE-MOONBU-001",
+    "817aae4d7ebb0969": "CASE-PHOENI-001",
+    "81f3d574fd469862": "CASE-RONINS-001",
+    "02b5aa7b54b1fa5e": "CASE-SEADRA-001",
+    "010f24feed6693fc": "CASE-FOREST-001",
+    "9a3e89331ccf5697": "CASE-SACRED-001",
+    "d0fe92b088fcf8a5": "CASE-NINETA-001",
+    "f4700f4ea5f3908f": "CASE-ROOTCO-001",
+    "b335fbd5fa809627": "CASE-BEARNO-001"
+  },
+  "image_hashes": {
+    "08400f9887fc2b0a2b4abe29d5cf3a477a1f0d5a3050cefe0791e96653259f79": "CASE-LOTUSS-001",
+    "aaefc86f986c9e0dcc2a494d3703eb402dbe01a7e92936cd078c8a60d9622fd9": "CASE-VOLCAN-001",
+    "180e23ef07b985bc2e0aa8996c4f07da800d8f69db51d5df3e7c362e4c58cddf": "CASE-MOONBU-001",
+    "cbf325e470970915ae67c139f1801f48b05369354912e07db92d52e33d8d5703": "CASE-PHOENI-001",
+    "6a4c04371a6fecc5c53bb14addae0532132a4714422cbebbab8a78eebfad9752": "CASE-RONINS-001",
+    "f10e48bed5ba2ad30cc7336c6b81469b5b07c18380fd12d4d9c2a0084d3bfe36": "CASE-SEADRA-001",
+    "048bff5fbaef8066a76215ada5144631c4abc1228b3a8afbdb69e294242b5c66": "CASE-FOREST-001",
+    "0b852f2cfdd618388179259c21806052d09517e32937a1286399a91e342b0ae6": "CASE-SACRED-001",
+    "1a2e8b5212f42f2ea4b0ca7c8657139aebcdf054f0164b0b14764a3ec58639a5": "CASE-NINETA-001",
+    "36296b4edd12a68b62b047b334be1abb855f6ad9c69cd60722c5ae76a3b928d0": "CASE-ROOTCO-001",
+    "6f3ba747aeb92c601be3835e8c5ec8985a5f4198d9b3b066ef049ca7917c8e82": "CASE-BEARNO-001"
+  }
+}

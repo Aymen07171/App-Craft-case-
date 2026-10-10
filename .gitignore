@@ -8,3 +8,6 @@ coverage/
 *.log
 .env*
 !.env.example
+gemini_chrome_profile/
+projects/
+
