@@ -4,33 +4,51 @@ import {
   LifestyleMockupRequest,
 } from '../../src/server/lifestyleMockup';
 
-export default async (request: Request) => {
-  if (request.method !== 'POST') {
-    return Response.json(
-      { error: 'Method not allowed.' },
-      { status: 405, headers: { Allow: 'POST' } }
-    );
+export const handler = async (event: any) => {
+  const method = event.httpMethod || event.requestContext?.http?.method || 'POST';
+  if (method !== 'POST') {
+    return {
+      statusCode: 405,
+      headers: { Allow: 'POST', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Method not allowed.' }),
+    };
   }
 
   let input: LifestyleMockupRequest;
   try {
-    input = (await request.json()) as LifestyleMockupRequest;
+    const rawBody = event.isBase64Encoded
+      ? Buffer.from(event.body || '', 'base64').toString('utf-8')
+      : event.body || '{}';
+    input = JSON.parse(rawBody) as LifestyleMockupRequest;
   } catch {
-    return Response.json({ error: 'Request body must be valid JSON.' }, { status: 400 });
+    return {
+      statusCode: 400,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Request body must be valid JSON.' }),
+    };
   }
 
   try {
     const imageUrl = await generateLifestyleMockup(input);
-    return Response.json({ imageUrl });
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageUrl }),
+    };
   } catch (error) {
     if (error instanceof LifestyleMockupError) {
-      return Response.json({ error: error.message }, { status: error.statusCode });
+      return {
+        statusCode: error.statusCode,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: error.message }),
+      };
     }
-    return Response.json({ error: 'Failed to generate lifestyle scene.' }, { status: 500 });
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Failed to generate lifestyle scene.' }),
+    };
   }
 };
 
-export const config = {
-  path: '/api/generate-lifestyle-scene',
-  method: 'POST',
-};
+export default handler;
