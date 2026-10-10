@@ -39,21 +39,19 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
   onNavigateToGallery,
 }) => {
   // Brand Filter & Model Search
-  const [selectedBrand, setSelectedBrand] = useState<'all' | 'apple' | 'samsung'>('apple');
+  const [selectedBrand, setSelectedBrand] = useState<'all' | 'apple' | 'samsung'>('all');
   const [modelSearch, setModelSearch] = useState<string>('');
 
   // Mode: Single vs Batch Catalog Generation
-  const [isBatchMode, setIsBatchMode] = useState<boolean>(false);
-  const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>([
-    'iphone-17-air',
-    'iphone-18-pro-max',
-    'iphone-17-pro-max',
-    'samsung-s26-ultra',
-    'samsung-s25-ultra',
-  ]);
+  const [isBatchMode, setIsBatchMode] = useState<boolean>(true);
+  const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>(() =>
+    PRINTIFY_TEMPLATES.map((t) => t.id)
+  );
 
   // Selected Reference Model (Single mode)
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('iphone-17-air');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(
+    PRINTIFY_TEMPLATES[0]?.id || 'front-iphone-18-pro-max'
+  );
   const activeTemplate =
     PRINTIFY_TEMPLATES.find((t) => t.id === selectedTemplateId) || PRINTIFY_TEMPLATES[0];
 
@@ -113,15 +111,7 @@ export const LifestyleStudio: React.FC<LifestyleStudioProps> = ({
   // Quick Batch Presets
   const handleSelectBatchPreset = (preset: 'essentials' | 'iphones' | 'samsung' | 'filtered') => {
     if (preset === 'essentials') {
-      setSelectedBatchIds([
-        'iphone-17-air',
-        'iphone-18-pro-max',
-        'iphone-17-pro-max',
-        'iphone-16-pro-max',
-        'samsung-s26-ultra',
-        'samsung-s25-ultra',
-        'samsung-s24-ultra',
-      ]);
+      setSelectedBatchIds(PRINTIFY_TEMPLATES.map((t) => t.id));
     } else if (preset === 'iphones') {
       setSelectedBatchIds(PRINTIFY_TEMPLATES.filter((t) => t.brand === 'apple').map((t) => t.id));
     } else if (preset === 'samsung') {

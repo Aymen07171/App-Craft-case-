@@ -2,42 +2,42 @@
   "selected_6_mockups": [
     {
       "key": "front-iphone-18-pro-max",
-      "label": "Front, iPhone 18 Pro Max",
+      "label": "Front view, iPhone 18 Pro Max",
       "variant_id": 423468,
       "camera_id": 152213,
       "camera_label": "front"
     },
     {
       "key": "closeup-iphone-16-pro-max",
-      "label": "Close-up, iPhone 16 Pro Max",
+      "label": "Close-up view, iPhone 16 Pro Max",
       "variant_id": 112813,
       "camera_id": 106399,
       "camera_label": "close-up"
     },
     {
-      "key": "layers-iphone-16-pro-max",
-      "label": "iPhone 16 Pro Max",
+      "key": "standard-iphone-16-pro-max",
+      "label": "Standard view, iPhone 16 Pro Max",
       "variant_id": 112813,
       "camera_id": 106403,
       "camera_label": "layers"
     },
     {
       "key": "context-1-iphone-11",
-      "label": "Context 1, iPhone 11",
+      "label": "Context view 1, iPhone 11",
       "variant_id": 62582,
       "camera_id": 97553,
       "camera_label": "context-1"
     },
     {
-      "key": "closeup-2-samsung-s24",
+      "key": "samsung-galaxy-s24",
       "label": "Samsung Galaxy S24",
       "variant_id": 105527,
       "camera_id": 102321,
       "camera_label": "close-up-2"
     },
     {
-      "key": "front-samsung-s26",
-      "label": "Front, Samsung Galaxy S26",
+      "key": "front-samsung-galaxy-s26",
+      "label": "Front view, Samsung Galaxy S26",
       "variant_id": 254190,
       "camera_id": 128128,
       "camera_label": "front"
@@ -57,7 +57,7 @@
       "selected_6_mockups": [
         {
           "key": "front-iphone-18-pro-max",
-          "label": "Front, iPhone 18 Pro Max",
+          "label": "Front view, iPhone 18 Pro Max",
           "variant_id": 423468,
           "camera_id": 152213,
           "camera_label": "front",
@@ -65,15 +65,15 @@
         },
         {
           "key": "closeup-iphone-16-pro-max",
-          "label": "Close-up, iPhone 16 Pro Max",
+          "label": "Close-up view, iPhone 16 Pro Max",
           "variant_id": 112813,
           "camera_id": 106399,
           "camera_label": "close-up",
           "url": "https://images.printify.com/mockup/6aca3ea25a8ad36f790b398d/112813/106399/forest-guardians-mystical-creatures-tough-phone-case.jpg?camera_label=close-up"
         },
         {
-          "key": "layers-iphone-16-pro-max",
-          "label": "iPhone 16 Pro Max",
+          "key": "standard-iphone-16-pro-max",
+          "label": "Standard view, iPhone 16 Pro Max",
           "variant_id": 112813,
           "camera_id": 106403,
           "camera_label": "layers",
@@ -81,14 +81,14 @@
         },
         {
           "key": "context-1-iphone-11",
-          "label": "Context 1, iPhone 11",
+          "label": "Context view 1, iPhone 11",
           "variant_id": 62582,
           "camera_id": 97553,
           "camera_label": "context-1",
           "url": "https://images.printify.com/mockup/6aca3ea25a8ad36f790b398d/62582/97553/forest-guardians-mystical-creatures-tough-phone-case.jpg?camera_label=context-1"
         },
         {
-          "key": "closeup-2-samsung-s24",
+          "key": "samsung-galaxy-s24",
           "label": "Samsung Galaxy S24",
           "variant_id": 105527,
           "camera_id": 102321,
@@ -96,8 +96,8 @@
           "url": "https://images.printify.com/mockup/6aca3ea25a8ad36f790b398d/105527/102321/forest-guardians-mystical-creatures-tough-phone-case.jpg?camera_label=close-up-2"
         },
         {
-          "key": "front-samsung-s26",
-          "label": "Front, Samsung Galaxy S26",
+          "key": "front-samsung-galaxy-s26",
+          "label": "Front view, Samsung Galaxy S26",
           "variant_id": 254190,
           "camera_id": 128128,
           "camera_label": "front",
@@ -118,7 +118,7 @@
       "selected_6_mockups": [
         {
           "key": "front-iphone-18-pro-max",
-          "label": "Front, iPhone 18 Pro Max",
+          "label": "Front view, iPhone 18 Pro Max",
           "variant_id": 423468,
           "camera_id": 152213,
           "camera_label": "front",
@@ -126,15 +126,15 @@
         },
         {
           "key": "closeup-iphone-16-pro-max",
-          "label": "Close-up, iPhone 16 Pro Max",
+          "label": "Close-up view, iPhone 16 Pro Max",
           "variant_id": 112813,
           "camera_id": 106399,
           "camera_label": "close-up",
           "url": "https://images.printify.com/mockup/6aca3ead8ae24d74970dd1de/112813/106399/sacred-stag-of-the-wildwood-tough-phone-case.jpg?camera_label=close-up"
         },
         {
-          "key": "layers-iphone-16-pro-max",
-          "label": "iPhone 16 Pro Max",
+          "key": "standard-iphone-16-pro-max",
+          "label": "Standard view, iPhone 16 Pro Max",
           "variant_id": 112813,
           "camera_id": 106403,
           "camera_label": "layers",
@@ -142,14 +142,14 @@
         },
         {
           "key": "context-1-iphone-11",
-          "label": "Context 1, iPhone 11",
+          "label": "Context view 1, iPhone 11",
           "variant_id": 62582,
           "camera_id": 97553,
           "camera_label": "context-1",
           "url": "https://images.printify.com/mockup/6aca3ead8ae24d74970dd1de/62582/97553/sacred-stag-of-the-wildwood-tough-phone-case.jpg?camera_label=context-1"
         },
         {
-          "key": "closeup-2-samsung-s24",
+          "key": "samsung-galaxy-s24",
           "label": "Samsung Galaxy S24",
           "variant_id": 105527,
           "camera_id": 102321,
@@ -157,8 +157,8 @@
           "url": "https://images.printify.com/mockup/6aca3ead8ae24d74970dd1de/105527/102321/sacred-stag-of-the-wildwood-tough-phone-case.jpg?camera_label=close-up-2"
         },
         {
-          "key": "front-samsung-s26",
-          "label": "Front, Samsung Galaxy S26",
+          "key": "front-samsung-galaxy-s26",
+          "label": "Front view, Samsung Galaxy S26",
           "variant_id": 254190,
           "camera_id": 128128,
           "camera_label": "front",
@@ -179,7 +179,7 @@
       "selected_6_mockups": [
         {
           "key": "front-iphone-18-pro-max",
-          "label": "Front, iPhone 18 Pro Max",
+          "label": "Front view, iPhone 18 Pro Max",
           "variant_id": 423468,
           "camera_id": 152213,
           "camera_label": "front",
@@ -187,15 +187,15 @@
         },
         {
           "key": "closeup-iphone-16-pro-max",
-          "label": "Close-up, iPhone 16 Pro Max",
+          "label": "Close-up view, iPhone 16 Pro Max",
           "variant_id": 112813,
           "camera_id": 106399,
           "camera_label": "close-up",
           "url": "https://images.printify.com/mockup/6aca3ebad7538ac1330eb064/112813/106399/nine-tailed-fox-of-the-untamed-forest-tough-phone-case.jpg?camera_label=close-up"
         },
         {
-          "key": "layers-iphone-16-pro-max",
-          "label": "iPhone 16 Pro Max",
+          "key": "standard-iphone-16-pro-max",
+          "label": "Standard view, iPhone 16 Pro Max",
           "variant_id": 112813,
           "camera_id": 106403,
           "camera_label": "layers",
@@ -203,14 +203,14 @@
         },
         {
           "key": "context-1-iphone-11",
-          "label": "Context 1, iPhone 11",
+          "label": "Context view 1, iPhone 11",
           "variant_id": 62582,
           "camera_id": 97553,
           "camera_label": "context-1",
           "url": "https://images.printify.com/mockup/6aca3ebad7538ac1330eb064/62582/97553/nine-tailed-fox-of-the-untamed-forest-tough-phone-case.jpg?camera_label=context-1"
         },
         {
-          "key": "closeup-2-samsung-s24",
+          "key": "samsung-galaxy-s24",
           "label": "Samsung Galaxy S24",
           "variant_id": 105527,
           "camera_id": 102321,
@@ -218,8 +218,8 @@
           "url": "https://images.printify.com/mockup/6aca3ebad7538ac1330eb064/105527/102321/nine-tailed-fox-of-the-untamed-forest-tough-phone-case.jpg?camera_label=close-up-2"
         },
         {
-          "key": "front-samsung-s26",
-          "label": "Front, Samsung Galaxy S26",
+          "key": "front-samsung-galaxy-s26",
+          "label": "Front view, Samsung Galaxy S26",
           "variant_id": 254190,
           "camera_id": 128128,
           "camera_label": "front",
@@ -240,7 +240,7 @@
       "selected_6_mockups": [
         {
           "key": "front-iphone-18-pro-max",
-          "label": "Front, iPhone 18 Pro Max",
+          "label": "Front view, iPhone 18 Pro Max",
           "variant_id": 423468,
           "camera_id": 152213,
           "camera_label": "front",
@@ -248,15 +248,15 @@
         },
         {
           "key": "closeup-iphone-16-pro-max",
-          "label": "Close-up, iPhone 16 Pro Max",
+          "label": "Close-up view, iPhone 16 Pro Max",
           "variant_id": 112813,
           "camera_id": 106399,
           "camera_label": "close-up",
           "url": "https://images.printify.com/mockup/6aca3ec764139bf30d00f20f/112813/106399/ancient-root-colossus-tough-phone-case.jpg?camera_label=close-up"
         },
         {
-          "key": "layers-iphone-16-pro-max",
-          "label": "iPhone 16 Pro Max",
+          "key": "standard-iphone-16-pro-max",
+          "label": "Standard view, iPhone 16 Pro Max",
           "variant_id": 112813,
           "camera_id": 106403,
           "camera_label": "layers",
@@ -264,14 +264,14 @@
         },
         {
           "key": "context-1-iphone-11",
-          "label": "Context 1, iPhone 11",
+          "label": "Context view 1, iPhone 11",
           "variant_id": 62582,
           "camera_id": 97553,
           "camera_label": "context-1",
           "url": "https://images.printify.com/mockup/6aca3ec764139bf30d00f20f/62582/97553/ancient-root-colossus-tough-phone-case.jpg?camera_label=context-1"
         },
         {
-          "key": "closeup-2-samsung-s24",
+          "key": "samsung-galaxy-s24",
           "label": "Samsung Galaxy S24",
           "variant_id": 105527,
           "camera_id": 102321,
@@ -279,8 +279,8 @@
           "url": "https://images.printify.com/mockup/6aca3ec764139bf30d00f20f/105527/102321/ancient-root-colossus-tough-phone-case.jpg?camera_label=close-up-2"
         },
         {
-          "key": "front-samsung-s26",
-          "label": "Front, Samsung Galaxy S26",
+          "key": "front-samsung-galaxy-s26",
+          "label": "Front view, Samsung Galaxy S26",
           "variant_id": 254190,
           "camera_id": 128128,
           "camera_label": "front",
@@ -301,7 +301,7 @@
       "selected_6_mockups": [
         {
           "key": "front-iphone-18-pro-max",
-          "label": "Front, iPhone 18 Pro Max",
+          "label": "Front view, iPhone 18 Pro Max",
           "variant_id": 423468,
           "camera_id": 152213,
           "camera_label": "front",
@@ -309,15 +309,15 @@
         },
         {
           "key": "closeup-iphone-16-pro-max",
-          "label": "Close-up, iPhone 16 Pro Max",
+          "label": "Close-up view, iPhone 16 Pro Max",
           "variant_id": 112813,
           "camera_id": 106399,
           "camera_label": "close-up",
           "url": "https://images.printify.com/mockup/6aca3ed4804a2b3c390a05ed/112813/106399/the-ancient-bear-of-the-wild-north-tough-phone-case.jpg?camera_label=close-up"
         },
         {
-          "key": "layers-iphone-16-pro-max",
-          "label": "iPhone 16 Pro Max",
+          "key": "standard-iphone-16-pro-max",
+          "label": "Standard view, iPhone 16 Pro Max",
           "variant_id": 112813,
           "camera_id": 106403,
           "camera_label": "layers",
@@ -325,14 +325,14 @@
         },
         {
           "key": "context-1-iphone-11",
-          "label": "Context 1, iPhone 11",
+          "label": "Context view 1, iPhone 11",
           "variant_id": 62582,
           "camera_id": 97553,
           "camera_label": "context-1",
           "url": "https://images.printify.com/mockup/6aca3ed4804a2b3c390a05ed/62582/97553/the-ancient-bear-of-the-wild-north-tough-phone-case.jpg?camera_label=context-1"
         },
         {
-          "key": "closeup-2-samsung-s24",
+          "key": "samsung-galaxy-s24",
           "label": "Samsung Galaxy S24",
           "variant_id": 105527,
           "camera_id": 102321,
@@ -340,8 +340,8 @@
           "url": "https://images.printify.com/mockup/6aca3ed4804a2b3c390a05ed/105527/102321/the-ancient-bear-of-the-wild-north-tough-phone-case.jpg?camera_label=close-up-2"
         },
         {
-          "key": "front-samsung-s26",
-          "label": "Front, Samsung Galaxy S26",
+          "key": "front-samsung-galaxy-s26",
+          "label": "Front view, Samsung Galaxy S26",
           "variant_id": 254190,
           "camera_id": 128128,
           "camera_label": "front",

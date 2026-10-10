@@ -49,6 +49,14 @@ export interface ExcelProductRow {
   printifyImageId?: string;
   printifyProductId?: string;
   printifyProductUrl?: string;
+  designatedMockups?: Array<{
+    src: string;
+    label: string;
+    key: string;
+    variant_ids: number[];
+    cameraId: number;
+    cameraLabel: string;
+  }>;
   error?: string;
   processedAt?: number;
 }
@@ -1439,6 +1447,8 @@ export async function processSequentialPrintifyImport(
       row.status = 'completed';
       row.printifyProductId = String(data.product.id);
       row.printifyProductUrl = `https://printify.com/app/store/products/${data.product.id}`;
+      row.designatedMockups =
+        data.designatedMockups || data.product?.designatedMockups || data.product?.images || [];
       row.error = undefined;
       row.processedAt = Date.now();
       successCount++;

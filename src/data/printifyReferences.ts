@@ -36,10 +36,13 @@ export interface PrintifyTemplateRef {
     raisedBezel: boolean;
     wrapBleed: boolean;
   };
+  variantId?: number;
+  cameraId?: number;
+  cameraLabel?: string;
   caseTypeDimensions?: Partial<Record<CaseType, { pixelWidth?: number; pixelHeight?: number; width?: number; height?: number }>>;
 }
 
-export const PRINTIFY_TEMPLATES: PrintifyTemplateRef[] = [
+export const ALL_PRINTIFY_CATALOG_TEMPLATES: PrintifyTemplateRef[] = [
   {
     id: 'iphone-18-pro-max',
     brand: 'apple',
@@ -3322,13 +3325,83 @@ export const PRINTIFY_TEMPLATES: PrintifyTemplateRef[] = [
   },
 ];
 
+const findBaseTemplate = (id: string): PrintifyTemplateRef =>
+  ALL_PRINTIFY_CATALOG_TEMPLATES.find((t) => t.id === id) || ALL_PRINTIFY_CATALOG_TEMPLATES[0];
+
 /**
- * Finds a template by its slug ID or modelName
+ * The 6 strictly designated Printify mockups retrieved and applied during the workflow:
+ * 1. Front view, iPhone 18 Pro Max (variant 423468, camera 152213, front)
+ * 2. Close-up view, iPhone 16 Pro Max (variant 112813, camera 106399, close-up)
+ * 3. Standard view, iPhone 16 Pro Max (variant 112813, camera 106403, layers)
+ * 4. Context view 1, iPhone 11 (variant 62582, camera 97553, context-1)
+ * 5. Samsung Galaxy S24 (variant 105527, camera 102321, close-up-2)
+ * 6. Front view, Samsung Galaxy S26 (variant 254190, camera 128128, front)
+ */
+export const DESIGNATED_6_PRINTIFY_MOCKUPS: PrintifyTemplateRef[] = [
+  {
+    ...findBaseTemplate('iphone-18-pro-max'),
+    id: 'front-iphone-18-pro-max',
+    modelName: 'Front view, iPhone 18 Pro Max',
+    variantId: 423468,
+    cameraId: 152213,
+    cameraLabel: 'front',
+  },
+  {
+    ...findBaseTemplate('iphone-16-pro-max'),
+    id: 'closeup-iphone-16-pro-max',
+    modelName: 'Close-up view, iPhone 16 Pro Max',
+    variantId: 112813,
+    cameraId: 106399,
+    cameraLabel: 'close-up',
+  },
+  {
+    ...findBaseTemplate('iphone-16-pro-max'),
+    id: 'standard-iphone-16-pro-max',
+    modelName: 'Standard view, iPhone 16 Pro Max',
+    variantId: 112813,
+    cameraId: 106403,
+    cameraLabel: 'layers',
+  },
+  {
+    ...findBaseTemplate('iphone-11'),
+    id: 'context-1-iphone-11',
+    modelName: 'Context view 1, iPhone 11',
+    variantId: 62582,
+    cameraId: 97553,
+    cameraLabel: 'context-1',
+  },
+  {
+    ...findBaseTemplate('samsung-s24'),
+    id: 'samsung-galaxy-s24',
+    modelName: 'Samsung Galaxy S24',
+    variantId: 105527,
+    cameraId: 102321,
+    cameraLabel: 'close-up-2',
+  },
+  {
+    ...findBaseTemplate('samsung-s26'),
+    id: 'front-samsung-galaxy-s26',
+    modelName: 'Front view, Samsung Galaxy S26',
+    variantId: 254190,
+    cameraId: 128128,
+    cameraLabel: 'front',
+  },
+];
+
+export const PRINTIFY_TEMPLATES: PrintifyTemplateRef[] = DESIGNATED_6_PRINTIFY_MOCKUPS;
+
+/**
+ * Finds a template by its slug ID or modelName across both the 6 designated mockups and full catalog
  */
 export function getPrintifyTemplate(idOrName: string): PrintifyTemplateRef | undefined {
   const query = idOrName.toLowerCase().trim();
-  return PRINTIFY_TEMPLATES.find(
-    (t) => t.id.toLowerCase() === query || t.modelName.toLowerCase() === query
+  return (
+    DESIGNATED_6_PRINTIFY_MOCKUPS.find(
+      (t) => t.id.toLowerCase() === query || t.modelName.toLowerCase() === query
+    ) ||
+    ALL_PRINTIFY_CATALOG_TEMPLATES.find(
+      (t) => t.id.toLowerCase() === query || t.modelName.toLowerCase() === query
+    )
   );
 }
 
@@ -3361,3 +3434,4 @@ export function getPrintCutoutDescription(modelName: string, caseType?: CaseType
   const safeZone = 'Keep primary character faces and key typography below top 35% safe-zone to prevent camera occlusion.';
   return `${template.modelName}: ${template.cameraCutout.description}. ${safeZone}`;
 }
+

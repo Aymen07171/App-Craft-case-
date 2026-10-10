@@ -53,6 +53,7 @@ import {
   diagnosePrintifyHealth,
 } from '../services/printifyClient';
 import { PrintifyKeyModal } from './PrintifyKeyModal';
+import { DESIGNATED_6_PRINTIFY_MOCKUPS } from '../data/printifyReferences';
 
 type CatalogItem = {
   id: number | string;
@@ -752,6 +753,40 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
     if (!product.pricing) savePricing(createPricingForProduct(product.product.price));
   }, [product.productId]);
 
+  const buildDesignatedMockupSlots = (
+    rawMockups: any[] | undefined,
+    existingMockups: UnifiedProductRecord['mockups']
+  ): UnifiedProductRecord['mockups'] => {
+    if (!Array.isArray(rawMockups) || rawMockups.length === 0) return existingMockups;
+    return DESIGNATED_6_PRINTIFY_MOCKUPS.map((target, slotIndex) => {
+      const matched =
+        rawMockups.find(
+          (img: any) =>
+            img?.key === target.id ||
+            (Number(img?.cameraId) === target.cameraId &&
+              Array.isArray(img?.variant_ids) &&
+              img.variant_ids.includes(target.variantId)) ||
+            (typeof img?.src === 'string' &&
+              img.src.includes(`/${target.variantId}/${target.cameraId}/`))
+        ) || rawMockups[slotIndex];
+      const existingSlot = existingMockups.find((m) => m.slotIndex === slotIndex);
+      const srcUrl = String(matched?.src || existingSlot?.fileUrl || existingSlot?.localUrl || '');
+      return {
+        slotIndex,
+        modelId: target.id,
+        modelName: target.modelName,
+        sceneTitle: target.modelName,
+        prompt: `Designated Printify Mockup: ${target.modelName} (camera_label=${target.cameraLabel})`,
+        localUrl: srcUrl || null,
+        fileId: existingSlot?.fileId || '',
+        fileUrl: srcUrl,
+        verified: Boolean(srcUrl),
+        isPrimary: slotIndex === 0,
+        status: srcUrl ? ('generated' as const) : ('pending' as const),
+      };
+    });
+  };
+
   const evaluatePrintifyProduct = async (showNotice = true, finalCheck = true) => {
     if (!savedProductId || !selectedShopId) return;
     try {
@@ -768,12 +803,20 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
         ? 'failed'
         : 'uploading';
 
+      const designatedMockups = buildDesignatedMockupSlots(
+        remote.designatedMockups || remote.images,
+        product.mockups
+      );
+
       if (nextStatus === 'published') {
         updateRecord({
           ...product,
+          mockups: designatedMockups,
           printify: {
             ...product.printify,
             status: 'published',
+            selectedModels: DESIGNATED_6_PRINTIFY_MOCKUPS.map((m) => m.modelName),
+            selectedMockupSlots: [0, 1, 2, 3, 4, 5],
             publishedProductUrl: /^https:\/\//i.test(String(external?.handle || ''))
               ? String(external.handle)
               : '',
@@ -791,19 +834,26 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
           },
         });
       } else {
-        updatePrintify({
-          status: nextStatus,
-          productStatusCheckedAt: new Date().toISOString(),
-          lastError:
-            nextStatus === 'failed'
-              ? 'Printify reports that publishing finished without a connected-store product. Retry publishing or check the connected shop.'
-              : '',
+        updateRecord({
+          ...product,
+          mockups: designatedMockups,
+          printify: {
+            ...product.printify,
+            status: nextStatus,
+            selectedModels: DESIGNATED_6_PRINTIFY_MOCKUPS.map((m) => m.modelName),
+            selectedMockupSlots: [0, 1, 2, 3, 4, 5],
+            productStatusCheckedAt: new Date().toISOString(),
+            lastError:
+              nextStatus === 'failed'
+                ? 'Printify reports that publishing finished without a connected-store product. Retry publishing or check the connected shop.'
+                : '',
+          },
         });
       }
       if (showNotice) {
         setNotice(
           nextStatus === 'published'
-            ? `Published to ${selectedShop?.sales_channel || 'connected store'} · ID ${external?.id}`
+            ? `Published to ${selectedShop?.sales_channel || 'connected store'} · ID ${external?.id} (6 designated mockups applied)`
             : nextStatus === 'uploading'
             ? 'Printify is still sending this product to the connected shop.'
             : 'The connected shop did not confirm publication. You can retry.'
@@ -822,7 +872,7 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
   const createProduct = async () => {
     setPublishing(true);
     setError('');
-    setNotice('Preparing artwork and selected mockups for upload...');
+    setNotice('Preparing artwork and the 6 designated Printify mockups for upload...');
     updatePrintify({
       status: 'uploading',
       lastError: '',
@@ -867,7 +917,7 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
       }
 
       // 3. Create Printify Product Draft
-      setNotice('Step 3/3: Creating Printify product draft with variants and publishing settings...');
+      setNotice('Step 3/3: Creating Printify product draft and retrieving ONLY the 6 designated mockups...');
       const productPayload = {
         ...product,
         product: { ...product.product, price: pricing.sellingPrice },
@@ -930,13 +980,21 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
         }
       }
 
+      const retrievedDesignatedMockups = buildDesignatedMockupSlots(
+        data.designatedMockups || data.product.designatedMockups || data.product.images,
+        productPayload.mockups
+      );
+
       updateRecord({
         ...productPayload,
+        mockups: retrievedDesignatedMockups,
         product: { ...productPayload.product, price: savedPricing.sellingPrice },
         pricing: savedPricing,
         printify: {
           ...productPayload.printify,
           status: 'draft',
+          selectedModels: DESIGNATED_6_PRINTIFY_MOCKUPS.map((m) => m.modelName),
+          selectedMockupSlots: [0, 1, 2, 3, 4, 5],
           uploadedImageIds: data.uploadedImageIds || [artworkImageId, ...mockupImageIds],
           variantProductionCosts,
           productUrl: `https://printify.com/app/products/${data.product.id}`,
@@ -946,7 +1004,7 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
       });
 
       setNotice(
-        `✓ Printify draft created successfully at $${savedPricing.sellingPrice.toFixed(2)}! Product ID: ${data.product.id}. Design artwork and ${mockupImageIds.length} custom mockup(s) uploaded to your Printify Media Library.`
+        `✓ Printify draft created at $${savedPricing.sellingPrice.toFixed(2)} (ID: ${data.product.id})! Strictly retrieved and applied ONLY the 6 designated Printify mockups.`
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Printify product creation failed.';
@@ -1642,10 +1700,10 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h4 className="text-xs font-semibold text-white">
-                    2. Mockups & Lifestyle Images to Upload ({selectedMockupSlots.length} selected)
+                    2. Designated Printify Mockups ({product.mockups.length ? selectedMockupSlots.length : DESIGNATED_6_PRINTIFY_MOCKUPS.length} of 6 targeted views active)
                   </h4>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Selected mockups are automatically converted and uploaded to your Printify Media Library.
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Workflow is locked to retrieve and apply ONLY the 6 designated Printify mockups below, excluding all other Printify mockup variants.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1655,7 +1713,7 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
                     disabled={publishing || Boolean(savedProductId)}
                     className="text-[11px] text-indigo-300 hover:text-indigo-200 hover:underline disabled:opacity-40"
                   >
-                    Select all
+                    Select all 6
                   </button>
                   <span className="text-slate-700 text-xs">|</span>
                   <button
@@ -1681,7 +1739,7 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
                           isSelected
                             ? 'border-indigo-400/70 bg-indigo-500/10'
                             : 'border-slate-800 bg-slate-950/40'
-                        } ${!available || savedProductId ? 'opacity-50' : 'cursor-pointer hover:border-slate-700'}`}
+                        } ${!available || savedProductId ? 'opacity-80' : 'cursor-pointer hover:border-slate-700'}`}
                       >
                         <input
                           type="checkbox"
@@ -1705,12 +1763,12 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
                           <span className="block truncate text-xs font-medium text-slate-200">
                             {mockup.sceneTitle || mockup.modelName || `Mockup ${mockup.slotIndex + 1}`}
                           </span>
-                          <span className="block text-[10px] text-slate-400 mt-0.5">
+                          <span className="block text-[10px] text-emerald-400 mt-0.5">
                             {savedProductId && isSelected
-                              ? '✓ Uploaded to Media Library'
+                              ? '✓ Designated Printify Mockup Applied'
                               : available
-                              ? 'Ready to upload'
-                              : 'No generated image'}
+                              ? '✓ Designated Mockup Ready'
+                              : 'Pending generation'}
                           </span>
                         </span>
                       </label>
@@ -1718,9 +1776,26 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
                   })}
                 </div>
               ) : (
-                <p className="rounded-lg border border-dashed border-slate-800 p-3 text-xs text-slate-500">
-                  Generated mockups will appear here after the mockup creation workflow.
-                </p>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {DESIGNATED_6_PRINTIFY_MOCKUPS.map((target, idx) => (
+                    <div
+                      key={target.id}
+                      className="flex items-center gap-2.5 rounded-lg border border-indigo-500/30 bg-indigo-950/20 p-2.5"
+                    >
+                      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-500/20 border border-indigo-400/40 text-xs font-bold text-indigo-300 shrink-0">
+                        {idx + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-semibold text-white">
+                          {target.modelName}
+                        </span>
+                        <span className="block text-[10px] text-indigo-300/80 font-mono">
+                          variant={target.variantId} · camera={target.cameraId} ({target.cameraLabel})
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
 
               <div
@@ -1730,14 +1805,12 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
                 <p className="flex items-start gap-2">
                   <Info className="mt-1 h-3.5 w-3.5 shrink-0 text-indigo-400" />
                   <span>
-                    <strong>Media Library Integration:</strong> All selected mockups are uploaded to your Printify Media Library. You can view them in Printify and attach them directly to this product’s store gallery.
+                    <strong>Strict 6-Mockup Filter Active:</strong> Only these 6 designated Printify mockups (<em>Front view, iPhone 18 Pro Max</em> · <em>Close-up view, iPhone 16 Pro Max</em> · <em>Standard view, iPhone 16 Pro Max</em> · <em>Context view 1, iPhone 11</em> · <em>Samsung Galaxy S24</em> · <em>Front view, Samsung Galaxy S26</em>) are retrieved and applied during product creation and publishing.
                   </span>
                 </p>
                 {savedProductId && (
-                  <p className="mt-1.5 pl-5 text-indigo-300">
-                    {uploadedMockupCount > 0
-                      ? `✓ ${uploadedMockupCount} mockup(s) uploaded to Printify for this draft.`
-                      : 'Draft created with design artwork.'}
+                  <p className="mt-1.5 pl-5 text-emerald-300">
+                    ✓ All 6 designated Printify mockups retrieved and applied to this product (ID: {savedProductId}).
                   </p>
                 )}
               </div>

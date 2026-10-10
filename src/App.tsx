@@ -18,6 +18,7 @@ import { ProjectDesignItem } from './services/projectPackagingService';
 import { ExcelPrintifyImporter } from './components/ExcelPrintifyImporter';
 import { GeneratedDesign } from './design-studio/types';
 import { PRINTIFY_TEMPLATES } from './data/printifyReferences';
+import { MASTER_5_PRINTIFY_PRODUCTS } from './services/pinterestCsvService';
 import {
   ProductWorkflowStep,
   UnifiedProductRecord,
@@ -78,44 +79,96 @@ Do not include: phone, phone case, mockup, device, realistic photography, 3D ren
   aspectRatio: '9:16',
 };
 
+const resolveDesignatedPrintifyMockupUrl = (
+  reference: (typeof PRINTIFY_TEMPLATES)[number],
+  artworkImageUrl: string,
+  printifyProductId?: string,
+  productTitle?: string
+): string | null => {
+  if (!reference.variantId || !reference.cameraId || !reference.cameraLabel) return null;
+
+  const normalizedTitle = (productTitle || '').toLowerCase();
+  const normalizedArt = (artworkImageUrl || '').toLowerCase();
+  const matchedMaster =
+    MASTER_5_PRINTIFY_PRODUCTS.find(
+      (p) =>
+        (printifyProductId && p.printifyId === printifyProductId) ||
+        (normalizedArt && normalizedArt.includes(p.artworkFile.toLowerCase())) ||
+        (normalizedTitle && normalizedTitle.includes(p.shortTitle.toLowerCase().split(' ')[0]))
+    ) || MASTER_5_PRINTIFY_PRODUCTS[0];
+
+  const resolvedProductId = printifyProductId || matchedMaster.printifyId;
+  const resolvedSlug =
+    printifyProductId && printifyProductId !== matchedMaster.printifyId
+      ? (productTitle || 'tough-phone-case')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '') || matchedMaster.slug
+      : matchedMaster.slug;
+
+  return `https://images.printify.com/mockup/${resolvedProductId}/${reference.variantId}/${reference.cameraId}/${resolvedSlug}.jpg?camera_label=${reference.cameraLabel}`;
+};
+
 const generateCaseScene = async (
   artworkImageUrl: string,
   sceneDescription: string,
   referenceId: string,
   variationIndex: number,
   productMockupUrl?: string,
-  sceneReferenceImageUrls: string[] = []
+  sceneReferenceImageUrls: string[] = [],
+  printifyProductId?: string,
+  productTitle?: string
 ) => {
   const reference = PRINTIFY_TEMPLATES.find((item) => item.id === referenceId);
-  if (!reference) throw new Error('The selected Printify model is unavailable.');
+  if (!reference) throw new Error('Only the 6 designated Printify mockups are allowed in this workflow.');
 
+  const designatedPrintifyUrl = resolveDesignatedPrintifyMockupUrl(
+    reference,
+    artworkImageUrl,
+    printifyProductId,
+    productTitle
+  );
+
+  // If the product is already linked to a Printify product ID (or matches the Printify catalog) and no custom scene reference overrides it, retrieve the designated Printify mockup directly if lifestyle scene API is not overrides
   const featureDescription = [
     reference.caseFeatures.toughBumper ? 'reinforced tough bumper' : '',
     reference.caseFeatures.raisedBezel ? 'raised protective bezel' : '',
     reference.caseFeatures.wrapBleed ? 'full-bleed wrap print' : '',
   ].filter(Boolean).join(', ');
 
-  const response = await fetch('/api/generate-lifestyle-scene', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      designImageUrl: artworkImageUrl,
-      productMockupUrl,
-      sceneReferenceImages: sceneReferenceImageUrls,
-      userScenePrompt: sceneDescription,
-      styleDirection: `Maintain this shared visual theme while making this case's composition distinct. Variation ${variationIndex}: vary camera angle, phone placement, lighting, environment, and props.`,
-      modelName: reference.modelName,
-      brand: reference.brand,
-      dimensions: reference.dimensions,
-      cameraCutoutDesc: `${reference.cameraCutout.description}; ${reference.cameraCutout.position}; ${reference.cameraCutout.cornerCurvature} corners`,
-      caseShapeDesc: `${reference.dimensions.mmWidth}mm x ${reference.dimensions.mmHeight}mm case, ${reference.cameraCutout.aspectRatio.toFixed(4)} width-to-height ratio, ${reference.cameraCutout.cornerCurvature} corner curvature; ${featureDescription}`,
-      variationIndex,
-    }),
-  });
+  try {
+    const response = await fetch('/api/generate-lifestyle-scene', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        designImageUrl: artworkImageUrl,
+        productMockupUrl: productMockupUrl || designatedPrintifyUrl || undefined,
+        sceneReferenceImages: sceneReferenceImageUrls,
+        userScenePrompt: sceneDescription,
+        styleDirection: `Designated Printify view: ${reference.modelName} (camera_label=${reference.cameraLabel || 'front'}). Maintain this shared visual theme while making this case's composition distinct. Variation ${variationIndex}.`,
+        modelName: reference.modelName,
+        brand: reference.brand,
+        dimensions: reference.dimensions,
+        cameraCutoutDesc: `${reference.cameraCutout.description}; ${reference.cameraCutout.position}; ${reference.cameraCutout.cornerCurvature} corners`,
+        caseShapeDesc: `${reference.dimensions.mmWidth}mm x ${reference.dimensions.mmHeight}mm case, ${reference.cameraCutout.aspectRatio.toFixed(4)} width-to-height ratio, ${reference.cameraCutout.cornerCurvature} corner curvature; ${featureDescription}`,
+        variationIndex,
+      }),
+    });
 
-  const data = (await response.json().catch(() => ({}))) as { imageUrl?: string; error?: string };
-  if (!response.ok || !data.imageUrl) throw new Error(data.error || `Failed to generate ${reference.modelName}.`);
-  return { reference, imageUrl: data.imageUrl };
+    const data = (await response.json().catch(() => ({}))) as { imageUrl?: string; error?: string };
+    if (response.ok && data.imageUrl) {
+      return { reference, imageUrl: data.imageUrl };
+    }
+    if (designatedPrintifyUrl) {
+      return { reference, imageUrl: designatedPrintifyUrl };
+    }
+    throw new Error(data.error || `Failed to generate ${reference.modelName}.`);
+  } catch (err) {
+    if (designatedPrintifyUrl) {
+      return { reference, imageUrl: designatedPrintifyUrl };
+    }
+    throw err;
+  }
 };
 
 export default function App() {
@@ -160,14 +213,14 @@ export default function App() {
   const [designs, setDesigns] = useState<GeneratedDesign[]>([INITIAL_VITRAIL_DESIGN]);
   const [activeDesign, setActiveDesign] = useState<GeneratedDesign | null>(INITIAL_VITRAIL_DESIGN);
 
-  // 5. Mockup Studio Workflow State (Preserved)
+  // 5. Mockup Studio Workflow State (Configured strictly for the 6 designated Printify mockups)
   const [mockupWorkflow, setMockupWorkflow] = useState<MockupWorkflowState>({
     activeStep: 'upload-design',
     artwork: {
       fileName: 'woodland-fox-stained-glass.jpg',
       imageUrl: INITIAL_VITRAIL_DESIGN.imageUrl,
     },
-    productReferenceIds: ['iphone-15-pro-max', 'iphone-15-pro', 'samsung-galaxy-s24-ultra'],
+    productReferenceIds: PRINTIFY_TEMPLATES.map((t) => t.id),
     productReferenceImages: {},
     sceneReferenceImages: [],
     sceneDescription:
@@ -464,7 +517,9 @@ export default function App() {
             reference.id,
             index + 1,
             request.productReferenceImages[reference.id]?.imageUrl,
-            request.sceneReferenceImages.map((image) => image.imageUrl)
+            request.sceneReferenceImages.map((image) => image.imageUrl),
+            product.automation.printifyProductId,
+            product.listing.title || product.designName
           );
 
           generatedMockups[index] = {
@@ -519,6 +574,7 @@ export default function App() {
         printify: {
           ...product.printify,
           selectedModels: references.map((r) => r.modelName),
+          selectedMockupSlots: successfulMockups.map((m) => m.slotIndex),
         },
       };
       handleUpdateProduct(updatedProduct);
@@ -551,7 +607,9 @@ export default function App() {
         modelId,
         index + 1,
         mockupWorkflow.productReferenceImages[modelId]?.imageUrl,
-        mockupWorkflow.sceneReferenceImages.map((image) => image.imageUrl)
+        mockupWorkflow.sceneReferenceImages.map((image) => image.imageUrl),
+        product.automation.printifyProductId,
+        product.listing.title || product.designName
       );
 
       setMockupWorkflow((current) => ({

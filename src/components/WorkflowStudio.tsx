@@ -160,8 +160,12 @@ export const WorkflowStudio: React.FC<WorkflowStudioProps> = ({
             <div>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-medium text-white">Printify Phone Cases ({filteredTemplates.length} models)</h2>
-                  <p className="mt-1 text-sm text-slate-400">Each selected model gets its own scene using its authentic catalog geometry.</p>
+                  <h2 className="text-sm font-medium text-white">
+                    Designated Printify Mockups ({filteredTemplates.length} targeted views)
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Strictly locked to the 6 designated Printify mockups — all other Printify mockup variants are excluded.
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -218,7 +222,7 @@ export const WorkflowStudio: React.FC<WorkflowStudioProps> = ({
                     type="text"
                     value={referenceSearch}
                     onChange={(e) => setReferenceSearch(e.target.value)}
-                    placeholder="Search model (e.g. 17 Air, Ultra)..."
+                    placeholder="Search designated mockup..."
                     className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
                   />
                 </div>
@@ -240,7 +244,9 @@ export const WorkflowStudio: React.FC<WorkflowStudioProps> = ({
                       </span>
                       <span className="min-w-0">
                         <span className="block text-sm font-medium text-white">{reference.modelName}</span>
-                        <span className="mt-1 block text-xs leading-5 text-slate-400">{reference.category} · {reference.dimensions.mmWidth} × {reference.dimensions.mmHeight} mm</span>
+                        <span className="mt-1 block text-xs leading-5 text-indigo-300">
+                          {reference.cameraLabel ? `camera_label=${reference.cameraLabel} · Variant ${reference.variantId} · Camera ${reference.cameraId}` : `${reference.category} · ${reference.dimensions.mmWidth} × ${reference.dimensions.mmHeight} mm`}
+                        </span>
                         <span className="block text-xs leading-5 text-slate-500">{reference.cameraCutout.description}</span>
                       </span>
                     </button>

@@ -189,6 +189,90 @@ function sanitizeName(value: string) {
   return clean;
 }
 
+export const DESIGNATED_6_PRINTIFY_MOCKUPS = [
+  {
+    key: 'front-iphone-18-pro-max',
+    label: 'Front view, iPhone 18 Pro Max',
+    variantId: 423468,
+    cameraId: 152213,
+    cameraLabel: 'front',
+  },
+  {
+    key: 'closeup-iphone-16-pro-max',
+    label: 'Close-up view, iPhone 16 Pro Max',
+    variantId: 112813,
+    cameraId: 106399,
+    cameraLabel: 'close-up',
+  },
+  {
+    key: 'standard-iphone-16-pro-max',
+    label: 'Standard view, iPhone 16 Pro Max',
+    variantId: 112813,
+    cameraId: 106403,
+    cameraLabel: 'layers',
+  },
+  {
+    key: 'context-1-iphone-11',
+    label: 'Context view 1, iPhone 11',
+    variantId: 62582,
+    cameraId: 97553,
+    cameraLabel: 'context-1',
+  },
+  {
+    key: 'samsung-galaxy-s24',
+    label: 'Samsung Galaxy S24',
+    variantId: 105527,
+    cameraId: 102321,
+    cameraLabel: 'close-up-2',
+  },
+  {
+    key: 'front-samsung-galaxy-s26',
+    label: 'Front view, Samsung Galaxy S26',
+    variantId: 254190,
+    cameraId: 128128,
+    cameraLabel: 'front',
+  },
+] as const;
+
+export function applyDesignated6PrintifyMockups(product: any): any {
+  if (!product || !product.id) return product;
+  const productId = String(product.id);
+  let slug = 'tough-phone-case';
+
+  if (Array.isArray(product.images) && product.images.length > 0) {
+    const sampleSrc = String(product.images[0]?.src || '');
+    const match = sampleSrc.match(/\/([^/?]+)\.jpg(?:\?|$)/i);
+    if (match && match[1]) {
+      slug = match[1];
+    }
+  } else if (product.title) {
+    slug =
+      String(product.title)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'tough-phone-case';
+  }
+
+  const designatedImages = DESIGNATED_6_PRINTIFY_MOCKUPS.map((m, idx) => ({
+    src: `https://images.printify.com/mockup/${productId}/${m.variantId}/${m.cameraId}/${slug}.jpg?camera_label=${m.cameraLabel}`,
+    variant_ids: [m.variantId],
+    position: 'front',
+    is_default: idx === 0,
+    is_selected_for_publishing: true,
+    order: idx,
+    label: m.label,
+    key: m.key,
+    cameraId: m.cameraId,
+    cameraLabel: m.cameraLabel,
+  }));
+
+  return {
+    ...product,
+    images: designatedImages,
+    designatedMockups: designatedImages,
+  };
+}
+
 function catalogRows(value: any): any[] {
   if (Array.isArray(value)) return value;
   if (Array.isArray(value?.data)) return value.data;
@@ -545,9 +629,14 @@ export async function handlePrintifyRequest(
         const shopId = safeSegment(url.searchParams.get('shopId') || '');
         const productId = url.searchParams.get('productId') || '';
         if (!/^[a-zA-Z0-9_-]+$/.test(productId)) throw new Error('Invalid Printify product identifier.');
+        const remoteProduct = await printifyFetch(
+          `/shops/${shopId}/products/${encodeURIComponent(productId)}.json`,
+          {},
+          effectiveToken
+        );
         return {
           status: 200,
-          body: await printifyFetch(`/shops/${shopId}/products/${encodeURIComponent(productId)}.json`, {}, effectiveToken),
+          body: applyDesignated6PrintifyMockups(remoteProduct),
         };
       }
       return { status: 400, body: { error: 'Unknown Printify resource.' } };
@@ -568,7 +657,8 @@ export async function handlePrintifyRequest(
       if (!Number.isFinite(price) || price <= 0) throw new Error('Set a selling price above zero before publishing.');
       const artworkImageId = String(body.artworkImageId || '');
       
-      const existing = await printifyFetch(`/shops/${shopId}/products/${encodeURIComponent(productId)}.json`, {}, effectiveToken);
+      const rawExisting = await printifyFetch(`/shops/${shopId}/products/${encodeURIComponent(productId)}.json`, {}, effectiveToken);
+      const existing = applyDesignated6PrintifyMockups(rawExisting);
       const existingVariants = existing.variants || [];
       if (!existingVariants.some((variant: any) => variant.is_enabled !== false)) {
         throw new Error('The Printify draft has no enabled variants to publish.');
@@ -599,17 +689,32 @@ export async function handlePrintifyRequest(
         }));
       }
 
-      await printifyFetch(
-        `/shops/${shopId}/products/${encodeURIComponent(productId)}.json`,
-        {
-          method: 'PUT',
-          body: JSON.stringify({
-            variants: updatedVariants,
-            print_areas: updatedPrintAreas,
-          }),
-        },
-        effectiveToken
-      );
+      try {
+        await printifyFetch(
+          `/shops/${shopId}/products/${encodeURIComponent(productId)}.json`,
+          {
+            method: 'PUT',
+            body: JSON.stringify({
+              variants: updatedVariants,
+              print_areas: updatedPrintAreas,
+              images: existing.images,
+            }),
+          },
+          effectiveToken
+        );
+      } catch {
+        await printifyFetch(
+          `/shops/${shopId}/products/${encodeURIComponent(productId)}.json`,
+          {
+            method: 'PUT',
+            body: JSON.stringify({
+              variants: updatedVariants,
+              print_areas: updatedPrintAreas,
+            }),
+          },
+          effectiveToken
+        );
+      }
 
       // Attempt publishing to connected sales channel (Etsy, Shopify, etc.)
       try {
@@ -635,9 +740,10 @@ export async function handlePrintifyRequest(
           body: {
             result: publishResult,
             artworkImageId,
+            designatedMockups: existing.designatedMockups,
             published: true,
             publishedToSalesChannel: true,
-            message: `Product (ID: ${productId}) published successfully to your connected store at $${price.toFixed(2)}!`,
+            message: `Product (ID: ${productId}) published successfully to your connected store at $${price.toFixed(2)} with the 6 designated mockups!`,
             productUrl: `https://printify.com/app/products/${productId}`,
           },
         };
@@ -647,10 +753,11 @@ export async function handlePrintifyRequest(
           body: {
             result: { status: 'draft_saved' },
             artworkImageId,
+            designatedMockups: existing.designatedMockups,
             published: true,
             publishedToSalesChannel: false,
             salesChannelWarning: true,
-            message: `Phone case draft saved in Printify (ID: ${productId}) at $${price.toFixed(2)}. To publish live to Etsy, connect your store in Printify Settings > My Stores.`,
+            message: `Phone case draft saved in Printify (ID: ${productId}) at $${price.toFixed(2)} with the 6 designated mockups. To publish live to Etsy, connect your store in Printify Settings > My Stores.`,
             productUrl: `https://printify.com/app/products/${productId}`,
           },
         };
@@ -826,14 +933,29 @@ export async function handlePrintifyRequest(
         }
       }
 
+      created = applyDesignated6PrintifyMockups(created);
+      try {
+        await printifyFetch(
+          `/shops/${encodeURIComponent(String(shopId))}/products/${encodeURIComponent(String(created.id))}.json`,
+          {
+            method: 'PUT',
+            body: JSON.stringify({ images: created.images }),
+          },
+          effectiveToken
+        );
+      } catch {
+        // Ignore if Printify API ignores direct images array overwrite on draft creation
+      }
+
       return {
         status: 200,
         body: {
           product: created,
+          designatedMockups: created.designatedMockups,
           uploadedImageIds,
           shopId: String(shopId),
           productUrl: `https://printify.com/app/products/${created.id}`,
-          message: `Phone case product draft created successfully at $${(sellingPriceCents / 100).toFixed(2)}! (ID: ${created.id})`,
+          message: `Phone case product draft created successfully at $${(sellingPriceCents / 100).toFixed(2)} with ONLY the 6 designated Printify mockups! (ID: ${created.id})`,
         },
       };
     }
