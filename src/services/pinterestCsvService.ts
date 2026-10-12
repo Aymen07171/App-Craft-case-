@@ -563,28 +563,28 @@ export interface PrintifyMockupPreset {
 export const PRINTIFY_6_SELECTED_MOCKUPS: PrintifyMockupPreset[] = [
   {
     key: 'front-iphone-18-pro-max',
-    label: 'Front view, iPhone 18 Pro Max',
+    label: 'Front, iPhone 18 Pro Max',
     variantId: 423468,
     cameraId: 152213,
     cameraLabel: 'front',
   },
   {
     key: 'closeup-iphone-16-pro-max',
-    label: 'Close-up view, iPhone 16 Pro Max',
+    label: 'Close-up, iPhone 16 Pro Max',
     variantId: 112813,
     cameraId: 106399,
     cameraLabel: 'close-up',
   },
   {
     key: 'standard-iphone-16-pro-max',
-    label: 'Standard view, iPhone 16 Pro Max',
+    label: 'iPhone 16 Pro Max',
     variantId: 112813,
     cameraId: 106403,
     cameraLabel: 'layers',
   },
   {
     key: 'context-1-iphone-11',
-    label: 'Context view 1, iPhone 11',
+    label: 'Context 1, iPhone 11',
     variantId: 62582,
     cameraId: 97553,
     cameraLabel: 'context-1',
@@ -598,12 +598,22 @@ export const PRINTIFY_6_SELECTED_MOCKUPS: PrintifyMockupPreset[] = [
   },
   {
     key: 'front-samsung-galaxy-s26',
-    label: 'Front view, Samsung Galaxy S26',
+    label: 'Front, Samsung Galaxy S26',
     variantId: 254190,
     cameraId: 128128,
     cameraLabel: 'front',
   },
 ];
+
+export interface CustomLifestyleMockupConfig {
+  imageId: string;
+  src: string;
+  localUrl: string;
+  label: string;
+  modelName: string;
+  variantId: number;
+  isPrimary: boolean;
+}
 
 export interface MasterPrintifyProductConfig {
   sku: string;
@@ -615,9 +625,45 @@ export interface MasterPrintifyProductConfig {
   description: string;
   keywords: string;
   artworkFile: string;
+  artworkPrintifyId?: string;
+  customLifestyleMockups?: CustomLifestyleMockupConfig[];
 }
 
 export const MASTER_5_PRINTIFY_PRODUCTS: MasterPrintifyProductConfig[] = [
+  {
+    sku: 'CASE-FROGLV-001',
+    printifyId: '6acca8512fe24e63d7081433',
+    slug: 'stained-glass-vitrail-70s-frog-lava-lamp-tough-phone-case.jpg',
+    theme: 'Stained Glass Vitrail 70s Frog & Lava Lamp',
+    title: 'Stained Glass Vitrail 70s Frog & Lava Lamp Tough Phone Case | Groovy Retro Art',
+    shortTitle: 'Stained Glass Vitrail 70s Frog & Lava Lamp Tough Phone Case',
+    description:
+      'Groovy 1970s stained-glass vitrail tree frog wearing retro amber sunglasses beside a glowing molten lava lamp, surrounded by psychedelic mushrooms and tropical monstera leaves. Dual-layer impact-resistant polycarbonate outer shell with shock-absorbing TPU inner liner. Fits 34 iPhone & Samsung Galaxy models.',
+    keywords:
+      'stained glass case, 70s frog phone case, lava lamp case, groovy retro frog, vitrail phone case, mushroom frog case, iphone 18 pro max, samsung galaxy s26, tough phone case, boho hippie case, psychedelic frog, cottagecore frog, gift for frog lover',
+    artworkFile: '/designs/CASE-FROGLV-001_9x16_Artwork.png',
+    artworkPrintifyId: '6acca82fbc2b8127c689d740',
+    customLifestyleMockups: [
+      {
+        imageId: '1f1c6250-00e7-6b38-b2b4-5e9ef2da5bd5',
+        src: 'https://d123s6f1z9g2wk.cloudfront.net/files/2026/10/20261012100924-1f1c6250-00e7-6b38-b2b4-5e9ef2da5bd5.png',
+        localUrl: '/mockups/CASE-FROGLV-001_iPhone_18_Pro_Max_Lifestyle.png',
+        label: 'Custom Lifestyle Mockup (Primary) — iPhone 18 Pro Max',
+        modelName: 'iPhone 18 Pro Max',
+        variantId: 423468,
+        isPrimary: true,
+      },
+      {
+        imageId: '1f1c6250-0222-6f16-a386-26855604e51d',
+        src: 'https://d123s6f1z9g2wk.cloudfront.net/files/2026/10/20261012100924-1f1c6250-0222-6f16-a386-26855604e51d.png',
+        localUrl: '/mockups/CASE-FROGLV-001_Samsung_Galaxy_S26_Lifestyle.png',
+        label: 'Custom Lifestyle Mockup — Samsung Galaxy S26',
+        modelName: 'Samsung Galaxy S26',
+        variantId: 254190,
+        isPrimary: false,
+      },
+    ],
+  },
   {
     sku: 'CASE-FOREST-001',
     printifyId: '6aca3ea25a8ad36f790b398d',
@@ -735,7 +781,42 @@ export const buildMasterPrintifyPinterestRows = (
 };
 
 /**
- * Default Pinterest rows pre-populated with the 5 Master Printify products × 6 Selected Mockups (30 Pins)
+ * Builds strictly 1 Pinterest row using the primary custom-generated lifestyle mockup
+ * (Stained Glass Vitrail 70s Frog & Lava Lamp — iPhone 18 Pro Max Lifestyle Mockup).
  */
-export const SAMPLE_PINTEREST_CSV_ROWS: PinterestCsvRow[] = buildMasterPrintifyPinterestRows();
+export const buildSingleMockupPinterestRows = (options?: {
+  boardName?: string;
+  destinationLink?: string;
+  startDate?: string;
+}): PinterestCsvRow[] => {
+  const prod = MASTER_5_PRINTIFY_PRODUCTS[0];
+  const primaryCustomMockup =
+    prod.customLifestyleMockups?.find((m) => m.isPrimary) || prod.customLifestyleMockups?.[0];
+  const mediaUrl =
+    primaryCustomMockup?.src ||
+    `https://images.printify.com/mockup/${prod.printifyId}/423468/152213/${prod.slug}?camera_label=front`;
+  const pubDateStr =
+    options?.startDate || new Date(Date.now() + 86400000).toISOString().split('T')[0];
+
+  return [
+    {
+      'Product ID': prod.sku,
+      Title: prod.title.slice(0, 100),
+      Description: prod.description.slice(0, 700),
+      'Media URL': mediaUrl,
+      'Pinterest board': options?.boardName || 'Phone Cases',
+      Thumbnail: '',
+      Link:
+        options?.destinationLink ||
+        'https://www.etsy.com/shop/CraftCasesStudio?utm_source=pinterest&utm_medium=social&utm_campaign=stained_glass_frog_001',
+      'Publish date': pubDateStr,
+      Keywords: prod.keywords,
+    },
+  ];
+};
+
+/**
+ * Default Pinterest rows pre-populated with strictly 1 Primary Mockup
+ */
+export const SAMPLE_PINTEREST_CSV_ROWS: PinterestCsvRow[] = buildSingleMockupPinterestRows();
 

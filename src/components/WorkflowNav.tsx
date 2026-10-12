@@ -19,6 +19,7 @@ import {
   Layout,
   ExternalLink,
   FileSpreadsheet,
+  ShoppingBag,
 } from 'lucide-react';
 import { ProductWorkflowStep } from '../types/unifiedWorkflow';
 
@@ -38,6 +39,9 @@ interface WorkflowNavProps {
   printifyCreated: boolean;
   printifyConnected?: boolean;
   onOpenPrintifyKeyModal?: () => void;
+  etsyConnected?: boolean;
+  etsyShopName?: string;
+  onOpenEtsyKeyModal?: () => void;
 }
 
 const STEPS: {
@@ -106,6 +110,12 @@ const STEPS: {
     subtitle: 'Auto-import into Printify',
     icon: FileSpreadsheet,
   },
+  {
+    id: 'etsy-store',
+    title: '9. Etsy Store',
+    subtitle: 'CraftCasesStudio API v3',
+    icon: ShoppingBag,
+  },
 ];
 
 export const WorkflowNav: React.FC<WorkflowNavProps> = ({
@@ -124,6 +134,9 @@ export const WorkflowNav: React.FC<WorkflowNavProps> = ({
   printifyCreated,
   printifyConnected,
   onOpenPrintifyKeyModal,
+  etsyConnected = true,
+  etsyShopName = 'CraftCasesStudio',
+  onOpenEtsyKeyModal,
 }) => {
   const [showWorkflowsMenu, setShowWorkflowsMenu] = useState(false);
 
@@ -149,6 +162,8 @@ export const WorkflowNav: React.FC<WorkflowNavProps> = ({
         return printifyCreated;
       case 'excel-printify':
         return printifyCreated;
+      case 'etsy-store':
+        return Boolean(etsyConnected);
       default:
         return false;
     }
@@ -193,10 +208,26 @@ export const WorkflowNav: React.FC<WorkflowNavProps> = ({
                       <Layout className="w-4 h-4 text-indigo-400" />
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-indigo-300">7-Stage End-to-End Pipeline</p>
-                      <p className="text-[10px] text-indigo-200 mt-0.5 font-medium">Full workflow: Design, Drive, Etsy, Sheets, and automation.</p>
+                      <p className="text-xs font-semibold text-indigo-300">9-Stage End-to-End Pipeline</p>
+                      <p className="text-[10px] text-indigo-200 mt-0.5 font-medium">Full workflow: Design, Drive, Printify, and Etsy Store API v3.</p>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectStep('etsy-store');
+                      setShowWorkflowsMenu(false);
+                    }}
+                    className="w-full flex items-start gap-3 p-2.5 rounded-lg text-left hover:bg-slate-800/80 transition cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-orange-950 border border-orange-700/50 flex items-center justify-center shrink-0">
+                      <ShoppingBag className="w-4 h-4 text-orange-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-white">Etsy Store Manager (Step 9)</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Direct Etsy Open API v3 connection to {etsyShopName}.</p>
+                    </div>
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -267,8 +298,33 @@ export const WorkflowNav: React.FC<WorkflowNavProps> = ({
           </span>
         </div>
 
-        {/* Integrations Status & Actions: Printify & Google Workspace */}
-        <div className="flex items-center gap-2">
+        {/* Integrations Status & Actions: Etsy, Printify & Google Workspace */}
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenEtsyKeyModal && (
+            <button
+              type="button"
+              onClick={onOpenEtsyKeyModal}
+              title={
+                etsyConnected
+                  ? `Etsy Open API v3 connected to ${etsyShopName} — click to manage credentials & OAuth`
+                  : 'Connect Etsy Open API v3 credentials'
+              }
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition cursor-pointer ${
+                etsyConnected
+                  ? 'border-orange-500/40 bg-orange-950/40 text-orange-200 hover:bg-orange-900/50'
+                  : 'border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              <ShoppingBag className="h-3.5 w-3.5 text-orange-400" />
+              <span>Etsy: {etsyShopName}</span>
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  etsyConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                }`}
+              />
+            </button>
+          )}
+
           {onOpenPrintifyKeyModal && (
             <button
               type="button"

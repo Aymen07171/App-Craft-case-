@@ -13,7 +13,9 @@ export type ProductWorkflowStep =
   | 'export'
   | 'pinterest'
   | 'printify'
-  | 'excel-printify';
+  | 'excel-printify'
+  | 'etsy-store';
+
 
 export type ProductStatus = 'DRAFT' | 'READY' | 'PROCESSING' | 'PUBLISHED' | 'ERROR';
 

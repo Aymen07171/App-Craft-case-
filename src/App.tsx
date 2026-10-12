@@ -12,6 +12,9 @@ import { GoogleAuthModal } from './components/GoogleAuthModal';
 import { PrintifyPublishPanel } from './components/PrintifyPublishPanel';
 import { PrintifyKeyModal } from './components/PrintifyKeyModal';
 import { getStoredPrintifyToken } from './services/printifyClient';
+import { EtsyKeyModal } from './components/EtsyKeyModal';
+import { EtsyStoreWorkspace } from './components/EtsyStoreWorkspace';
+import { getStoredEtsyCredentials } from './services/etsyClient';
 import { DirectUploaderWorkspace } from './components/DirectUploaderWorkspace';
 import { ProjectBatchStudio } from './components/ProjectBatchStudio';
 import { ProjectDesignItem } from './services/projectPackagingService';
@@ -175,13 +178,96 @@ export default function App() {
   // 1. Unified Pipeline Step: batch-studio -> design -> mockup -> drive -> listing -> export
   const [pipelineStep, setPipelineStep] = useState<ProductWorkflowStep>('batch-studio');
 
-  // 2. Centralized Product Record State
+  // 2. Centralized Product Record State (Pre-configured with Stained Glass Vitrail 70s Frog & Lava Lamp + Custom Lifestyle Mockups First + 6 Approved Printify Mockups)
   const [product, setProduct] = useState<UnifiedProductRecord>(() => {
-    return createInitialProductRecord(
-      INITIAL_VITRAIL_DESIGN.title,
-      INITIAL_VITRAIL_DESIGN.prompt,
-      INITIAL_VITRAIL_DESIGN.imageUrl
+    const frogMaster = MASTER_5_PRINTIFY_PRODUCTS[0];
+    const base = createInitialProductRecord(
+      frogMaster.title,
+      'Pure 2D full-bleed vertical 9:16 commercial illustration in intricate cathedral stained-glass vitrail mosaic style featuring a groovy 1970s tree frog with amber sunglasses beside a glowing lava lamp.',
+      frogMaster.artworkFile
     );
+
+    const customMockupSlots: UnifiedProductRecord['mockups'] = (frogMaster.customLifestyleMockups || []).map(
+      (cm, idx) => ({
+        slotIndex: idx,
+        modelId: idx === 0 ? 'custom-lifestyle-iphone-18-pro-max' : 'custom-lifestyle-samsung-galaxy-s26',
+        modelName: cm.modelName,
+        sceneTitle: cm.label,
+        prompt: `Custom-Generated Lifestyle Mockup (${cm.modelName})`,
+        localUrl: cm.localUrl,
+        fileId: cm.imageId,
+        fileUrl: cm.src,
+        verified: true,
+        isPrimary: idx === 0,
+        status: 'generated' as const,
+      })
+    );
+
+    const approvedPrintifySlots: UnifiedProductRecord['mockups'] = PRINTIFY_TEMPLATES.map((ref, idx) => {
+      const slotIndex = customMockupSlots.length + idx;
+      const cdnUrl = `https://images.printify.com/mockup/${frogMaster.printifyId}/${ref.variantId}/${ref.cameraId}/${frogMaster.slug}?camera_label=${ref.cameraLabel}`;
+      return {
+        slotIndex,
+        modelId: ref.id,
+        modelName: ref.modelName,
+        sceneTitle: ref.modelName,
+        prompt: `Designated Printify Mockup: ${ref.modelName} (camera_label=${ref.cameraLabel})`,
+        localUrl: cdnUrl,
+        fileId: `${frogMaster.printifyId}_${ref.variantId}_${ref.cameraId}_${ref.cameraLabel}`,
+        fileUrl: cdnUrl,
+        verified: true,
+        isPrimary: false,
+        status: 'generated' as const,
+      };
+    });
+
+    const combinedMockups = [...customMockupSlots, ...approvedPrintifySlots];
+
+    return {
+      ...base,
+      productId: frogMaster.sku,
+      designName: frogMaster.theme,
+      design: {
+        ...base.design,
+        title: frogMaster.theme,
+        localUrl: frogMaster.artworkFile,
+        fileId: frogMaster.artworkPrintifyId || '6acca82fbc2b8127c689d740',
+        fileUrl: 'https://pfy-prod-image-storage.s3.us-east-2.amazonaws.com/28542499/059d4512-2bc2-499c-921c-d236e7f2ab71',
+        verified: true,
+      },
+      mockups: combinedMockups,
+      listing: {
+        ...base.listing,
+        title: frogMaster.title,
+        description: frogMaster.description,
+        tags: frogMaster.keywords.split(',').map((k) => k.trim()).slice(0, 13),
+      },
+      product: {
+        ...base.product,
+        sku: frogMaster.sku,
+        price: 22.20,
+      },
+      printify: {
+        ...base.printify,
+        shopId: '29067558',
+        blueprintId: '269',
+        printProviderId: '99',
+        status: 'draft',
+        selectedModels: PRINTIFY_TEMPLATES.map((m) => m.modelName),
+        selectedMockupSlots: combinedMockups.map((m) => m.slotIndex),
+        uploadedImageIds: [
+          '6acca82fbc2b8127c689d740',
+          '6acca832fa94bfd5c760ee87',
+          '6acca83478454ffcf1527ff0',
+        ],
+        productUrl: `https://printify.com/app/products/${frogMaster.printifyId}`,
+      },
+      automation: {
+        ...base.automation,
+        status: 'DRAFT',
+        printifyProductId: frogMaster.printifyId,
+      },
+    };
   });
 
   // 3. Google OAuth & Drive Authentication State (persisted across sessions)
@@ -190,6 +276,7 @@ export default function App() {
   const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
   const [isPrintifyKeyModalOpen, setIsPrintifyKeyModalOpen] = useState(false);
+  const [isEtsyKeyModalOpen, setIsEtsyKeyModalOpen] = useState(false);
   const [isDownloadingAssets, setIsDownloadingAssets] = useState(false);
   const [assetDownloadError, setAssetDownloadError] = useState<string | null>(null);
 
@@ -213,18 +300,18 @@ export default function App() {
   const [designs, setDesigns] = useState<GeneratedDesign[]>([INITIAL_VITRAIL_DESIGN]);
   const [activeDesign, setActiveDesign] = useState<GeneratedDesign | null>(INITIAL_VITRAIL_DESIGN);
 
-  // 5. Mockup Studio Workflow State (Configured strictly for the 6 designated Printify mockups)
+  // 5. Mockup Studio Workflow State (Configured strictly for custom lifestyle mockups + the 6 approved Printify mockups)
   const [mockupWorkflow, setMockupWorkflow] = useState<MockupWorkflowState>({
     activeStep: 'upload-design',
     artwork: {
-      fileName: 'woodland-fox-stained-glass.jpg',
-      imageUrl: INITIAL_VITRAIL_DESIGN.imageUrl,
+      fileName: 'CASE-FROGLV-001_9x16_Artwork.png',
+      imageUrl: '/designs/CASE-FROGLV-001_9x16_Artwork.png',
     },
     productReferenceIds: PRINTIFY_TEMPLATES.map((t) => t.id),
     productReferenceImages: {},
     sceneReferenceImages: [],
     sceneDescription:
-      'Artisanal coffee shop wooden table, latte cup and notebook beside smartphone resting at a slight angle showcasing the case artwork',
+      'Held gently at the side edges by a person wearing a cozy cream ribbed-knit sweater cuff over a warm honey-oak wooden desk, with a ribbed glass vase holding dried white baby\'s breath florals',
     generatedMockups: [],
     generatedImageUrl: null,
     isGenerating: false,
@@ -901,6 +988,9 @@ export default function App() {
         printifyCreated={Boolean(product.automation.printifyProductId)}
         printifyConnected={Boolean(getStoredPrintifyToken())}
         onOpenPrintifyKeyModal={() => setIsPrintifyKeyModalOpen(true)}
+        etsyConnected={Boolean(getStoredEtsyCredentials().clientId)}
+        etsyShopName={getStoredEtsyCredentials().shopName || 'CraftCasesStudio'}
+        onOpenEtsyKeyModal={() => setIsEtsyKeyModalOpen(true)}
         googleConnected={Boolean(googleToken)}
         googleEmail={googleEmail}
         onConnectGoogle={() => handleConnectGoogle()}
@@ -1121,6 +1211,16 @@ export default function App() {
             />
           </div>
         )}
+
+        {/* Step 9: Etsy Store Manager (Open API v3) */}
+        {pipelineStep === 'etsy-store' && (
+          <EtsyStoreWorkspace
+            product={product}
+            onUpdateProduct={handleUpdateProduct}
+            onOpenEtsyKeyModal={() => setIsEtsyKeyModalOpen(true)}
+            onNavigateToStep={setPipelineStep}
+          />
+        )}
       </main>
 
       {/* Google OAuth & Account Settings Modal */}
@@ -1140,10 +1240,16 @@ export default function App() {
         onClose={() => setIsPrintifyKeyModalOpen(false)}
       />
 
+      {/* Global Etsy Open API v3 Credentials & OAuth Modal */}
+      <EtsyKeyModal
+        isOpen={isEtsyKeyModalOpen}
+        onClose={() => setIsEtsyKeyModalOpen(false)}
+      />
+
       {/* Global Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
         <p>
-          CaseCraft Unified Studio • DESIGN GENERATION → MOCKUPS → GOOGLE DRIVE → ETSY LISTING → GOOGLE SHEETS → MAKE.COM
+          CaseCraft Unified Studio • DESIGN GENERATION → MOCKUPS → GOOGLE DRIVE → ETSY STORE API v3 → PRINTIFY → PINTEREST
         </p>
       </footer>
     </div>

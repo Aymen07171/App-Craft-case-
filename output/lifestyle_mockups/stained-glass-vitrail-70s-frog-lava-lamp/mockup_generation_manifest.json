@@ -1,0 +1,62 @@
+{
+  "sku": "CASE-FROGLV-001",
+  "title": "Stained Glass Vitrail 70s Frog & Lava Lamp",
+  "design_slug": "stained-glass-vitrail-70s-frog-lava-lamp",
+  "generated_at": "2026-10-12T08:58:14.809883",
+  "master_artwork": {
+    "path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\output\\lifestyle_mockups\\stained-glass-vitrail-70s-frog-lava-lamp\\CASE-FROGLV-001_Master_9x16_Artwork_1344x2389_300DPI.png",
+    "public_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\public\\designs\\CASE-FROGLV-001_9x16_Artwork.png",
+    "dimensions": "1344x2389",
+    "aspect_ratio": "9:16",
+    "dpi": 300,
+    "prompt": "Pure 2D full-bleed vertical 9:16 commercial illustration for 'Stained Glass Vitrail 70s Frog & Lava Lamp'.\n\nCOMPOSITION & SAFE ZONE:\n- TOP 35% (CAMERA SAFE ZONE): Atmospheric background elements (stained-glass sunburst arches, celestial sky, or soft ambient glow) completely free of faces or primary subjects.\n- LOWER 65% (CENTERED FOCAL CHARACTER): A charismatic sentient focal character and central subject representing 'Stained Glass Vitrail 70s Frog & Lava Lamp', horizontally centered in the lower 65% of the frame with rich stained-glass / commercial illustration detail.\n\nSTRICT RULES:\n- Pure flat 2D edge-to-edge full-bleed artwork only.\n- NO phone case, NO phone bezel, NO camera cutout hole, NO 3D mockup frame, NO borders, NO text or watermarks."
+  },
+  "lifestyle_mockups": {
+    "iphone-18-pro-max": {
+      "model_spec": {
+        "id": "iphone-18-pro-max",
+        "name": "iPhone 18 Pro Max",
+        "brand": "Apple",
+        "printify_mockup_label": "Front view, iPhone 18 Pro Max",
+        "pixel_width": 1339,
+        "pixel_height": 2275,
+        "mm_width": 113.37,
+        "mm_height": 192.62,
+        "dpi": 300,
+        "corner_style": "generous continuous-curve rounded corners",
+        "case_construction": "dual-layer protective Tough Case with smooth satin-gloss polycarbonate printed backplate, matte black shock-absorbing TPU perimeter bumper edges, and raised black camera bezel ring",
+        "camera_cutout_spec": "accurate iPhone 18 Pro Max top-left square camera plateau housing three large Pro camera lenses in a triangular layout, LiDAR scanner, and True Tone flash recessed inside the protective black bezel cutout"
+      },
+      "scene_preset": "cozy_knit_handheld",
+      "output_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\output\\lifestyle_mockups\\stained-glass-vitrail-70s-frog-lava-lamp\\iphone-18-pro-max\\CASE-FROGLV-001_iPhone_18_Pro_Max_Cozy_Knit_Handheld_Mockup.png",
+      "public_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\public\\mockups\\CASE-FROGLV-001_iPhone_18_Pro_Max_Lifestyle.png",
+      "prompt": "Photorealistic commercial e-commerce lifestyle product photograph of a Apple iPhone 18 Pro Max Tough Phone Case showcasing the exact 'Stained Glass Vitrail 70s Frog & Lava Lamp' artwork from Image 1.\n\nSTRICT ARTWORK & DEVICE RULES:\n- Image 1 is the IMMUTABLE artwork source. Reproduce its exact design, colors, character details, and layout onto the backplate of the phone case with 100% fidelity. Do not redraw, reinterpret, crop, or replace any part of the artwork.\n- Target Device: Apple iPhone 18 Pro Max (1339x2275 px @ 300 DPI, 113.37x192.62 mm, generous continuous-curve rounded corners).\n- Case Construction: dual-layer protective Tough Case with smooth satin-gloss polycarbonate printed backplate, matte black shock-absorbing TPU perimeter bumper edges, and raised black camera bezel ring.\n- Camera Hardware: accurate iPhone 18 Pro Max top-left square camera plateau housing three large Pro camera lenses in a triangular layout, LiDAR scanner, and True Tone flash recessed inside the protective black bezel cutout. Leave the lower 65% focal artwork completely unobstructed.\n\nSCENE & PHOTOGRAPHY STYLE:\n- Held gently at the side edges by a person wearing a cozy cream ribbed-knit sweater cuff over a warm honey-oak wooden desk, with a ribbed glass vase holding dried white baby's breath florals and a minimalist soft-cover art book softly blurred in the background. Warm golden-hour side window light, shallow depth of field (85mm f/2.8 lens), ultra-sharp focus on the printed phone case backplate.\n- Return a single photorealistic commercial product photograph with natural lighting, realistic shadows, and crisp focus on the printed case."
+    },
+    "samsung-s26": {
+      "model_spec": {
+        "id": "samsung-s26",
+        "name": "Samsung Galaxy S26",
+        "brand": "Samsung",
+        "printify_mockup_label": "Front view, Samsung Galaxy S26",
+        "pixel_width": 1269,
+        "pixel_height": 2122,
+        "mm_width": 107.44,
+        "mm_height": 179.66,
+        "dpi": 300,
+        "corner_style": "sleek slightly squarer S-series corner radius",
+        "case_construction": "dual-layer protective Tough Case with vivid edge-to-edge printed polycarbonate backplate and matte black shock-absorbing TPU perimeter bumper edges",
+        "camera_cutout_spec": "accurate Samsung Galaxy S26 top-left vertical pill cutout housing 3 vertically stacked circular camera lenses in a single vertical column with a small LED flash dot to the right of the top lens (strictly no iPhone triangular lens cluster)"
+      },
+      "scene_preset": "linen_oak_flatlay",
+      "output_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\output\\lifestyle_mockups\\stained-glass-vitrail-70s-frog-lava-lamp\\samsung-s26\\CASE-FROGLV-001_Samsung_Galaxy_S26_Linen_Oak_Flatlay_Mockup.png",
+      "public_path": "C:\\Users\\jacka\\Downloads\\app-craft-case-\\public\\mockups\\CASE-FROGLV-001_Samsung_Galaxy_S26_Lifestyle.png",
+      "prompt": "Photorealistic commercial e-commerce lifestyle product photograph of a Samsung Samsung Galaxy S26 Tough Phone Case showcasing the exact 'Stained Glass Vitrail 70s Frog & Lava Lamp' artwork from Image 1.\n\nSTRICT ARTWORK & DEVICE RULES:\n- Image 1 is the IMMUTABLE artwork source. Reproduce its exact design, colors, character details, and layout onto the backplate of the phone case with 100% fidelity. Do not redraw, reinterpret, crop, or replace any part of the artwork.\n- Target Device: Samsung Samsung Galaxy S26 (1269x2122 px @ 300 DPI, 107.44x179.66 mm, sleek slightly squarer S-series corner radius).\n- Case Construction: dual-layer protective Tough Case with vivid edge-to-edge printed polycarbonate backplate and matte black shock-absorbing TPU perimeter bumper edges.\n- Camera Hardware: accurate Samsung Galaxy S26 top-left vertical pill cutout housing 3 vertically stacked circular camera lenses in a single vertical column with a small LED flash dot to the right of the top lens (strictly no iPhone triangular lens cluster). Leave the lower 65% focal artwork completely unobstructed.\n\nSCENE & PHOTOGRAPHY STYLE:\n- Resting face-down (printed backplate facing the camera) at a natural 15-degree angle on soft cream textured linen fabric and warm honey-oak wood, framed in the upper corners by delicate sprigs of dried white baby's breath flowers and dappled golden-hour window light shadows. 85mm f/2.8 commercial product photography, natural contact shadows, ultra-sharp focus on the case artwork.\n- Return a single photorealistic commercial product photograph with natural lighting, realistic shadows, and crisp focus on the printed case."
+    }
+  },
+  "reference_images": [
+    "C:\\Users\\jacka\\Downloads\\app-craft-case-\\output\\lifestyle_mockups\\stained-glass-vitrail-70s-frog-lava-lamp\\reference_styles\\reference_style_01.jpg",
+    "C:\\Users\\jacka\\Downloads\\app-craft-case-\\output\\lifestyle_mockups\\stained-glass-vitrail-70s-frog-lava-lamp\\reference_styles\\reference_style_02.jpg",
+    "C:\\Users\\jacka\\Downloads\\app-craft-case-\\output\\lifestyle_mockups\\stained-glass-vitrail-70s-frog-lava-lamp\\reference_styles\\reference_style_03.jpg",
+    "C:\\Users\\jacka\\Downloads\\app-craft-case-\\output\\lifestyle_mockups\\stained-glass-vitrail-70s-frog-lava-lamp\\reference_styles\\reference_style_04.webp"
+  ]
+}

@@ -192,28 +192,28 @@ function sanitizeName(value: string) {
 export const DESIGNATED_6_PRINTIFY_MOCKUPS = [
   {
     key: 'front-iphone-18-pro-max',
-    label: 'Front view, iPhone 18 Pro Max',
+    label: 'Front, iPhone 18 Pro Max',
     variantId: 423468,
     cameraId: 152213,
     cameraLabel: 'front',
   },
   {
     key: 'closeup-iphone-16-pro-max',
-    label: 'Close-up view, iPhone 16 Pro Max',
+    label: 'Close-up, iPhone 16 Pro Max',
     variantId: 112813,
     cameraId: 106399,
     cameraLabel: 'close-up',
   },
   {
     key: 'standard-iphone-16-pro-max',
-    label: 'Standard view, iPhone 16 Pro Max',
+    label: 'iPhone 16 Pro Max',
     variantId: 112813,
     cameraId: 106403,
     cameraLabel: 'layers',
   },
   {
     key: 'context-1-iphone-11',
-    label: 'Context view 1, iPhone 11',
+    label: 'Context 1, iPhone 11',
     variantId: 62582,
     cameraId: 97553,
     cameraLabel: 'context-1',
@@ -227,14 +227,53 @@ export const DESIGNATED_6_PRINTIFY_MOCKUPS = [
   },
   {
     key: 'front-samsung-galaxy-s26',
-    label: 'Front view, Samsung Galaxy S26',
+    label: 'Front, Samsung Galaxy S26',
     variantId: 254190,
     cameraId: 128128,
     cameraLabel: 'front',
   },
 ] as const;
 
-export function applyDesignated6PrintifyMockups(product: any): any {
+export interface CustomLifestyleMockupEntry {
+  imageId: string;
+  src: string;
+  localUrl?: string;
+  label: string;
+  key: string;
+  modelName: string;
+  variantId: number;
+  isPrimary?: boolean;
+}
+
+export const CUSTOM_LIFESTYLE_MOCKUPS_REGISTRY: Record<string, CustomLifestyleMockupEntry[]> = {
+  '6acca8512fe24e63d7081433': [
+    {
+      imageId: '1f1c6250-00e7-6b38-b2b4-5e9ef2da5bd5',
+      src: 'https://d123s6f1z9g2wk.cloudfront.net/files/2026/10/20261012100924-1f1c6250-00e7-6b38-b2b4-5e9ef2da5bd5.png',
+      localUrl: '/mockups/CASE-FROGLV-001_iPhone_18_Pro_Max_Lifestyle.png',
+      label: 'Custom Lifestyle Mockup (Primary) — iPhone 18 Pro Max',
+      key: 'custom-lifestyle-iphone-18-pro-max',
+      modelName: 'iPhone 18 Pro Max',
+      variantId: 423468,
+      isPrimary: true,
+    },
+    {
+      imageId: '1f1c6250-0222-6f16-a386-26855604e51d',
+      src: 'https://d123s6f1z9g2wk.cloudfront.net/files/2026/10/20261012100924-1f1c6250-0222-6f16-a386-26855604e51d.png',
+      localUrl: '/mockups/CASE-FROGLV-001_Samsung_Galaxy_S26_Lifestyle.png',
+      label: 'Custom Lifestyle Mockup — Samsung Galaxy S26',
+      key: 'custom-lifestyle-samsung-galaxy-s26',
+      modelName: 'Samsung Galaxy S26',
+      variantId: 254190,
+      isPrimary: false,
+    },
+  ],
+};
+
+export function applyDesignated6PrintifyMockups(
+  product: any,
+  incomingCustomMockups?: CustomLifestyleMockupEntry[]
+): any {
   if (!product || !product.id) return product;
   const productId = String(product.id);
   let slug = 'tough-phone-case';
@@ -253,23 +292,52 @@ export function applyDesignated6PrintifyMockups(product: any): any {
         .replace(/^-+|-+$/g, '') || 'tough-phone-case';
   }
 
-  const designatedImages = DESIGNATED_6_PRINTIFY_MOCKUPS.map((m, idx) => ({
-    src: `https://images.printify.com/mockup/${productId}/${m.variantId}/${m.cameraId}/${slug}.jpg?camera_label=${m.cameraLabel}`,
-    variant_ids: [m.variantId],
+  if (Array.isArray(incomingCustomMockups) && incomingCustomMockups.length > 0) {
+    CUSTOM_LIFESTYLE_MOCKUPS_REGISTRY[productId] = incomingCustomMockups;
+  }
+
+  const customList = CUSTOM_LIFESTYLE_MOCKUPS_REGISTRY[productId] || [];
+
+  // 1. Place custom-generated lifestyle mockups FIRST (order 0..N-1), with index 0 as primary (is_default: true)
+  const customGalleryImages = customList.map((cm, idx) => ({
+    id: cm.imageId,
+    src: cm.src,
+    localUrl: cm.localUrl || cm.src,
+    variant_ids: [cm.variantId],
     position: 'front',
     is_default: idx === 0,
     is_selected_for_publishing: true,
+    is_custom_lifestyle: true,
     order: idx,
+    label: cm.label,
+    modelName: cm.modelName,
+    key: cm.key,
+  }));
+
+  // 2. Position the 6 approved Printify mockups immediately AFTER the custom-generated lifestyle mockups
+  const designatedPrintifyImages = DESIGNATED_6_PRINTIFY_MOCKUPS.map((m, idx) => ({
+    mockup_id: `${productId}_${m.variantId}_${m.cameraId}_${m.cameraLabel}`,
+    src: `https://images.printify.com/mockup/${productId}/${m.variantId}/${m.cameraId}/${slug}.jpg?camera_label=${m.cameraLabel}`,
+    variant_ids: [m.variantId],
+    position: 'front',
+    is_default: customGalleryImages.length === 0 && idx === 0,
+    is_selected_for_publishing: true,
+    is_custom_lifestyle: false,
+    order: customGalleryImages.length + idx,
     label: m.label,
     key: m.key,
     cameraId: m.cameraId,
     cameraLabel: m.cameraLabel,
   }));
 
+  const combinedGallery = [...customGalleryImages, ...designatedPrintifyImages];
+
   return {
     ...product,
-    images: designatedImages,
-    designatedMockups: designatedImages,
+    images: combinedGallery,
+    customLifestyleMockups: customGalleryImages,
+    designatedMockups: designatedPrintifyImages,
+    galleryMockups: combinedGallery,
   };
 }
 
@@ -933,7 +1001,10 @@ export async function handlePrintifyRequest(
         }
       }
 
-      created = applyDesignated6PrintifyMockups(created);
+      const incomingCustomMockups = Array.isArray(body.customLifestyleMockups)
+        ? body.customLifestyleMockups
+        : undefined;
+      created = applyDesignated6PrintifyMockups(created, incomingCustomMockups);
       try {
         await printifyFetch(
           `/shops/${encodeURIComponent(String(shopId))}/products/${encodeURIComponent(String(created.id))}.json`,
@@ -951,11 +1022,13 @@ export async function handlePrintifyRequest(
         status: 200,
         body: {
           product: created,
+          customLifestyleMockups: created.customLifestyleMockups,
           designatedMockups: created.designatedMockups,
+          galleryMockups: created.galleryMockups,
           uploadedImageIds,
           shopId: String(shopId),
           productUrl: `https://printify.com/app/products/${created.id}`,
-          message: `Phone case product draft created successfully at $${(sellingPriceCents / 100).toFixed(2)} with ONLY the 6 designated Printify mockups! (ID: ${created.id})`,
+          message: `Phone case product draft created successfully at $${(sellingPriceCents / 100).toFixed(2)} with custom lifestyle mockups prioritized first followed by the 6 approved Printify mockups! (ID: ${created.id})`,
         },
       };
     }

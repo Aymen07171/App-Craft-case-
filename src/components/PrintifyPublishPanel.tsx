@@ -755,36 +755,83 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
 
   const buildDesignatedMockupSlots = (
     rawMockups: any[] | undefined,
-    existingMockups: UnifiedProductRecord['mockups']
+    existingMockups: UnifiedProductRecord['mockups'],
+    customLifestyleEntries?: Array<{
+      imageId: string;
+      src: string;
+      localUrl?: string;
+      label: string;
+      modelName: string;
+      variantId: number;
+      key: string;
+    }>
   ): UnifiedProductRecord['mockups'] => {
     if (!Array.isArray(rawMockups) || rawMockups.length === 0) return existingMockups;
-    return DESIGNATED_6_PRINTIFY_MOCKUPS.map((target, slotIndex) => {
-      const matched =
-        rawMockups.find(
-          (img: any) =>
-            img?.key === target.id ||
-            (Number(img?.cameraId) === target.cameraId &&
-              Array.isArray(img?.variant_ids) &&
-              img.variant_ids.includes(target.variantId)) ||
-            (typeof img?.src === 'string' &&
-              img.src.includes(`/${target.variantId}/${target.cameraId}/`))
-        ) || rawMockups[slotIndex];
-      const existingSlot = existingMockups.find((m) => m.slotIndex === slotIndex);
-      const srcUrl = String(matched?.src || existingSlot?.fileUrl || existingSlot?.localUrl || '');
-      return {
-        slotIndex,
-        modelId: target.id,
-        modelName: target.modelName,
-        sceneTitle: target.modelName,
-        prompt: `Designated Printify Mockup: ${target.modelName} (camera_label=${target.cameraLabel})`,
-        localUrl: srcUrl || null,
-        fileId: existingSlot?.fileId || '',
-        fileUrl: srcUrl,
-        verified: Boolean(srcUrl),
-        isPrimary: slotIndex === 0,
-        status: srcUrl ? ('generated' as const) : ('pending' as const),
-      };
+
+    // 1. Collect custom-generated lifestyle mockups first (never let Printify default mockups replace or precede them)
+    const existingCustomMockups = existingMockups.filter((m) => {
+      const url = String(m.localUrl || m.fileUrl || '');
+      const isStandardPrintifyCdn = url.includes('images.printify.com/mockup/');
+      const isDesignatedPrompt = String(m.prompt || '').startsWith('Designated Printify Mockup:');
+      return Boolean(url) && !isStandardPrintifyCdn && !isDesignatedPrompt;
     });
+
+    const customSlots: UnifiedProductRecord['mockups'] =
+      Array.isArray(customLifestyleEntries) && customLifestyleEntries.length > 0
+        ? customLifestyleEntries.map((entry, idx) => ({
+            slotIndex: idx,
+            modelId: entry.key,
+            modelName: entry.modelName,
+            sceneTitle: entry.label,
+            prompt: `Custom-Generated Lifestyle Mockup (${entry.modelName})`,
+            localUrl: entry.localUrl || entry.src,
+            fileId: entry.imageId,
+            fileUrl: entry.src,
+            verified: true,
+            isPrimary: idx === 0,
+            status: 'generated' as const,
+          }))
+        : existingCustomMockups.map((m, idx) => ({
+            ...m,
+            slotIndex: idx,
+            isPrimary: idx === 0,
+            verified: true,
+            status: 'generated' as const,
+          }));
+
+    // 2. Append the 6 Approved Printify Mockups immediately after the custom-generated lifestyle mockups
+    const approvedPrintifySlots: UnifiedProductRecord['mockups'] = DESIGNATED_6_PRINTIFY_MOCKUPS.map(
+      (target, idx) => {
+        const slotIndex = customSlots.length + idx;
+        const matched =
+          rawMockups.find(
+            (img: any) =>
+              img?.key === target.id ||
+              (Number(img?.cameraId) === target.cameraId &&
+                Array.isArray(img?.variant_ids) &&
+                img.variant_ids.includes(target.variantId)) ||
+              (typeof img?.src === 'string' &&
+                img.src.includes(`/${target.variantId}/${target.cameraId}/`))
+          ) || rawMockups.find((img: any) => !img?.is_custom_lifestyle);
+        const existingSlot = existingMockups.find((m) => m.modelId === target.id);
+        const srcUrl = String(matched?.src || existingSlot?.fileUrl || existingSlot?.localUrl || '');
+        return {
+          slotIndex,
+          modelId: target.id,
+          modelName: target.modelName,
+          sceneTitle: target.modelName,
+          prompt: `Designated Printify Mockup: ${target.modelName} (camera_label=${target.cameraLabel})`,
+          localUrl: srcUrl || null,
+          fileId: existingSlot?.fileId || '',
+          fileUrl: srcUrl,
+          verified: Boolean(srcUrl),
+          isPrimary: customSlots.length === 0 && idx === 0,
+          status: srcUrl ? ('generated' as const) : ('pending' as const),
+        };
+      }
+    );
+
+    return [...customSlots, ...approvedPrintifySlots];
   };
 
   const evaluatePrintifyProduct = async (showNotice = true, finalCheck = true) => {
@@ -805,8 +852,10 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
 
       const designatedMockups = buildDesignatedMockupSlots(
         remote.designatedMockups || remote.images,
-        product.mockups
+        product.mockups,
+        remote.customLifestyleMockups
       );
+      const allSlotIndices = designatedMockups.map((m) => m.slotIndex);
 
       if (nextStatus === 'published') {
         updateRecord({
@@ -816,7 +865,7 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
             ...product.printify,
             status: 'published',
             selectedModels: DESIGNATED_6_PRINTIFY_MOCKUPS.map((m) => m.modelName),
-            selectedMockupSlots: [0, 1, 2, 3, 4, 5],
+            selectedMockupSlots: allSlotIndices,
             publishedProductUrl: /^https:\/\//i.test(String(external?.handle || ''))
               ? String(external.handle)
               : '',
@@ -841,7 +890,7 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
             ...product.printify,
             status: nextStatus,
             selectedModels: DESIGNATED_6_PRINTIFY_MOCKUPS.map((m) => m.modelName),
-            selectedMockupSlots: [0, 1, 2, 3, 4, 5],
+            selectedMockupSlots: allSlotIndices,
             productStatusCheckedAt: new Date().toISOString(),
             lastError:
               nextStatus === 'failed'
@@ -853,7 +902,7 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
       if (showNotice) {
         setNotice(
           nextStatus === 'published'
-            ? `Published to ${selectedShop?.sales_channel || 'connected store'} · ID ${external?.id} (6 designated mockups applied)`
+            ? `Published to ${selectedShop?.sales_channel || 'connected store'} · ID ${external?.id} (custom lifestyle mockups prioritized + 6 approved Printify mockups)`
             : nextStatus === 'uploading'
             ? 'Printify is still sending this product to the connected shop.'
             : 'The connected shop did not confirm publication. You can retry.'
@@ -868,11 +917,11 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
     }
   };
 
-  // Main Action: Create Product & Upload Design + Mockups
+  // Main Action: Create Product & Upload Design + Custom Lifestyle Mockups
   const createProduct = async () => {
     setPublishing(true);
     setError('');
-    setNotice('Preparing artwork and the 6 designated Printify mockups for upload...');
+    setNotice('Preparing artwork, custom lifestyle mockups, and the 6 approved Printify mockups...');
     updatePrintify({
       status: 'uploading',
       lastError: '',
@@ -894,30 +943,57 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
       );
       const artworkImageId = artworkUpload.imageId;
 
-      // 2. Upload Selected Mockups
+      // 2. Upload Selected Custom Lifestyle Mockups
       const selectedMockups = product.mockups.filter(
         (mockup) =>
-          selectedMockupSlots.includes(mockup.slotIndex) && (mockup.fileUrl || mockup.localUrl)
+          selectedMockupSlots.includes(mockup.slotIndex) &&
+          (mockup.fileUrl || mockup.localUrl) &&
+          !String(mockup.fileUrl || mockup.localUrl || '').includes('images.printify.com/mockup/')
       );
 
       const mockupImageIds: string[] = [];
+      const uploadedCustomMockupEntries: Array<{
+        imageId: string;
+        src: string;
+        localUrl?: string;
+        label: string;
+        modelName: string;
+        variantId: number;
+        key: string;
+        isPrimary: boolean;
+      }> = [];
+
       for (const [index, mockup] of selectedMockups.entries()) {
         const mockupSource = mockup.localUrl || mockup.fileUrl;
         if (mockupSource) {
           setNotice(
-            `Step 2/3: Uploading mockup ${index + 1} of ${selectedMockups.length} to Printify Media Library...`
+            `Step 2/3: Uploading custom lifestyle mockup ${index + 1} of ${selectedMockups.length} to Printify Media Library...`
           );
           const mockupUpload = await uploadPrintifyImage(
-            `${product.productId}-${mockup.modelId || `mockup_${mockup.slotIndex + 1}`}.png`,
+            `${product.productId}-${mockup.modelId || `lifestyle_${mockup.slotIndex + 1}`}.png`,
             mockupSource,
             tokenInput
           );
           mockupImageIds.push(mockupUpload.imageId);
+          const isSamsung = /samsung|s26/i.test(`${mockup.modelName} ${mockup.modelId}`);
+          uploadedCustomMockupEntries.push({
+            imageId: mockupUpload.imageId,
+            src: mockupUpload.previewUrl || mockupSource,
+            localUrl: mockup.localUrl || mockupSource,
+            label:
+              index === 0
+                ? `Custom Lifestyle Mockup (Primary) — ${mockup.modelName}`
+                : `Custom Lifestyle Mockup — ${mockup.modelName}`,
+            modelName: mockup.modelName,
+            variantId: isSamsung ? 254190 : 423468,
+            key: mockup.modelId || `custom-lifestyle-${index + 1}`,
+            isPrimary: index === 0,
+          });
         }
       }
 
       // 3. Create Printify Product Draft
-      setNotice('Step 3/3: Creating Printify product draft and retrieving ONLY the 6 designated mockups...');
+      setNotice('Step 3/3: Creating Printify product draft with custom lifestyle mockups prioritized first...');
       const productPayload = {
         ...product,
         product: { ...product.product, price: pricing.sellingPrice },
@@ -943,7 +1019,7 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
           action: 'create',
           shopId: selectedShopId,
           blueprintId: effectiveBlueprintId,
-          printProviderId: productPayload.printify.printProviderId || providerId || '1',
+          printProviderId: productPayload.printify.printProviderId || providerId || '99',
           variantIds: productPayload.printify.variantIds,
           price: pricing.sellingPrice,
           token: tokenInput,
@@ -956,6 +1032,7 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
           },
           artworkImageId,
           uploadedImageIds: [artworkImageId, ...mockupImageIds],
+          customLifestyleMockups: uploadedCustomMockupEntries,
         }),
       });
 
@@ -982,8 +1059,10 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
 
       const retrievedDesignatedMockups = buildDesignatedMockupSlots(
         data.designatedMockups || data.product.designatedMockups || data.product.images,
-        productPayload.mockups
+        productPayload.mockups,
+        data.customLifestyleMockups || uploadedCustomMockupEntries
       );
+      const allSlotIndices = retrievedDesignatedMockups.map((m) => m.slotIndex);
 
       updateRecord({
         ...productPayload,
@@ -994,7 +1073,7 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
           ...productPayload.printify,
           status: 'draft',
           selectedModels: DESIGNATED_6_PRINTIFY_MOCKUPS.map((m) => m.modelName),
-          selectedMockupSlots: [0, 1, 2, 3, 4, 5],
+          selectedMockupSlots: allSlotIndices,
           uploadedImageIds: data.uploadedImageIds || [artworkImageId, ...mockupImageIds],
           variantProductionCosts,
           productUrl: `https://printify.com/app/products/${data.product.id}`,
@@ -1004,7 +1083,7 @@ export const PrintifyPublishPanel: React.FC<Props> = ({
       });
 
       setNotice(
-        `✓ Printify draft created at $${savedPricing.sellingPrice.toFixed(2)} (ID: ${data.product.id})! Strictly retrieved and applied ONLY the 6 designated Printify mockups.`
+        `✓ Printify draft created at $${savedPricing.sellingPrice.toFixed(2)} (ID: ${data.product.id})! Custom lifestyle mockups are prioritized first, followed by the 6 approved Printify mockups.`
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Printify product creation failed.';

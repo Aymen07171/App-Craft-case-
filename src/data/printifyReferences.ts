@@ -3329,19 +3329,19 @@ const findBaseTemplate = (id: string): PrintifyTemplateRef =>
   ALL_PRINTIFY_CATALOG_TEMPLATES.find((t) => t.id === id) || ALL_PRINTIFY_CATALOG_TEMPLATES[0];
 
 /**
- * The 6 strictly designated Printify mockups retrieved and applied during the workflow:
- * 1. Front view, iPhone 18 Pro Max (variant 423468, camera 152213, front)
- * 2. Close-up view, iPhone 16 Pro Max (variant 112813, camera 106399, close-up)
- * 3. Standard view, iPhone 16 Pro Max (variant 112813, camera 106403, layers)
- * 4. Context view 1, iPhone 11 (variant 62582, camera 97553, context-1)
+ * The 6 strictly approved Printify mockups retrieved and applied during the workflow:
+ * 1. Front, iPhone 18 Pro Max (variant 423468, camera 152213, front)
+ * 2. Close-up, iPhone 16 Pro Max (variant 112813, camera 106399, close-up)
+ * 3. iPhone 16 Pro Max (variant 112813, camera 106403, layers)
+ * 4. Context 1, iPhone 11 (variant 62582, camera 97553, context-1)
  * 5. Samsung Galaxy S24 (variant 105527, camera 102321, close-up-2)
- * 6. Front view, Samsung Galaxy S26 (variant 254190, camera 128128, front)
+ * 6. Front, Samsung Galaxy S26 (variant 254190, camera 128128, front)
  */
 export const DESIGNATED_6_PRINTIFY_MOCKUPS: PrintifyTemplateRef[] = [
   {
     ...findBaseTemplate('iphone-18-pro-max'),
     id: 'front-iphone-18-pro-max',
-    modelName: 'Front view, iPhone 18 Pro Max',
+    modelName: 'Front, iPhone 18 Pro Max',
     variantId: 423468,
     cameraId: 152213,
     cameraLabel: 'front',
@@ -3349,7 +3349,7 @@ export const DESIGNATED_6_PRINTIFY_MOCKUPS: PrintifyTemplateRef[] = [
   {
     ...findBaseTemplate('iphone-16-pro-max'),
     id: 'closeup-iphone-16-pro-max',
-    modelName: 'Close-up view, iPhone 16 Pro Max',
+    modelName: 'Close-up, iPhone 16 Pro Max',
     variantId: 112813,
     cameraId: 106399,
     cameraLabel: 'close-up',
@@ -3357,7 +3357,7 @@ export const DESIGNATED_6_PRINTIFY_MOCKUPS: PrintifyTemplateRef[] = [
   {
     ...findBaseTemplate('iphone-16-pro-max'),
     id: 'standard-iphone-16-pro-max',
-    modelName: 'Standard view, iPhone 16 Pro Max',
+    modelName: 'iPhone 16 Pro Max',
     variantId: 112813,
     cameraId: 106403,
     cameraLabel: 'layers',
@@ -3365,7 +3365,7 @@ export const DESIGNATED_6_PRINTIFY_MOCKUPS: PrintifyTemplateRef[] = [
   {
     ...findBaseTemplate('iphone-11'),
     id: 'context-1-iphone-11',
-    modelName: 'Context view 1, iPhone 11',
+    modelName: 'Context 1, iPhone 11',
     variantId: 62582,
     cameraId: 97553,
     cameraLabel: 'context-1',
@@ -3381,7 +3381,7 @@ export const DESIGNATED_6_PRINTIFY_MOCKUPS: PrintifyTemplateRef[] = [
   {
     ...findBaseTemplate('samsung-s26'),
     id: 'front-samsung-galaxy-s26',
-    modelName: 'Front view, Samsung Galaxy S26',
+    modelName: 'Front, Samsung Galaxy S26',
     variantId: 254190,
     cameraId: 128128,
     cameraLabel: 'front',

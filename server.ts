@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
 import designStudioApi from './src/server/designStudioApi';
 import { handlePrintifyRequest } from './src/server/printify';
+import { handleEtsyRequest } from './src/server/etsy';
 import {
   generateLifestyleMockup,
   LifestyleMockupError,
@@ -53,6 +54,23 @@ app.all('/api/printify', async (req, res) => {
     (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : undefined);
   const token = headerToken || req.body?.token || req.body?.apiToken || url.searchParams.get('token') || url.searchParams.get('apiToken');
   const result = await handlePrintifyRequest(req.method, url, req.body, token);
+  res.status(result.status).json(result.body);
+});
+
+app.all('/api/etsy', async (req, res) => {
+  const url = new URL(req.originalUrl, `http://${req.headers.host || 'localhost:3000'}`);
+  const credOverrides = {
+    clientId: (req.headers['x-etsy-client-id'] as string) || req.body?.clientId || undefined,
+    clientSecret: (req.headers['x-etsy-client-secret'] as string) || req.body?.clientSecret || undefined,
+    scopes: (req.headers['x-etsy-scopes'] as string) || req.body?.scopes || undefined,
+    shopId: (req.headers['x-etsy-shop-id'] as string) || req.body?.shopId || undefined,
+    accessToken: (req.headers['x-etsy-access-token'] as string) || req.body?.accessToken || undefined,
+  };
+  const result = await handleEtsyRequest(req.method, url, req.body, credOverrides);
+  if (result.html) {
+    res.status(result.status).setHeader('Content-Type', 'text/html; charset=utf-8').send(result.html);
+    return;
+  }
   res.status(result.status).json(result.body);
 });
 

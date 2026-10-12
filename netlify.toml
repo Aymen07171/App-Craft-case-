@@ -10,3 +10,9 @@
   from = "/api/printify"
   to = "/.netlify/functions/printify"
   status = 200
+
+[[redirects]]
+  from = "/api/etsy"
+  to = "/.netlify/functions/etsy"
+  status = 200
+
