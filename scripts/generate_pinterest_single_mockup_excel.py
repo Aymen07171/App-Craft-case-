@@ -2,15 +2,47 @@
 """
 scripts/generate_pinterest_single_mockup_excel.py
 Generates the official Pinterest Bulk Upload Excel workbook (.xlsx) and CSV file (.csv)
-for the 6 Frog & Lava Lamp designs with STRICTLY ONE mockup per product (the Primary Custom Lifestyle Mockup iPhone 18 Pro Max).
+for all 17 designs (7 Frog + 10 Sardinhas) with STRICTLY ONE mockup per product
+(the Primary Custom Lifestyle Mockup iPhone 18 Pro Max from CloudFront).
 """
 
 import csv
+import json
 import os
-from datetime import datetime, timedelta
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+
+SHOP_ID = "29067558"
+BASE_URL = "https://api.printify.com/v1"
+env_text = Path(".env").read_text(encoding="utf-8")
+TOKEN = [l.split("=", 1)[1].strip() for l in env_text.splitlines() if l.startswith("PRINTIFY_API_TOKEN=")][0]
+HEADERS = {"Authorization": f"Bearer {TOKEN}", "User-Agent": "CraftCase/1.0"}
+
+PRODUCTS = [
+    # 7 Frog Designs
+    ("CASE-FROGLV-001", "6acca8512fe24e63d7081433", "frog phone case, stained glass case, tough phone case, aesthetic frog case, vitrail art, retro lava lamp case"),
+    ("CASE-FROGLV-002", "6acce0b68b0d8773c80012e6", "suncatcher frog case, mini frog lava lamp, vitrail phone case, cute frog phone case, psychedelic phone case, iphone 18 case"),
+    ("CASE-FROGLV-003", "6acce0bbc73d3718f10562f1", "gothic wizard frog case, potion bottle phone case, stained glass gothic case, fantasy frog case, dark academia phone case"),
+    ("CASE-FROGLV-004", "6acce0bfd84251369c0ac373", "celestial tarot frog case, moon frog phone case, mystic lava lamp case, occult vitrail case, galaxy frog tough case"),
+    ("CASE-FROGLV-005", "6acce0c48b0d8773c80012eb", "western cowboy frog case, disco lava lamp phone case, 70s retro phone case, desert frog case, boho western case"),
+    ("CASE-FROGLV-006", "6acce0c8997ccda18c0325ef", "lofi dj frog case, 70s vinyl phone case, bubbling lava lamp case, aesthetic music phone case, cute dj frog cover"),
+    ("CASE-FROGLV-007", "6acce0cdd84251369c0ac382", "uv blacklight frog case, cyber vitrail case, acid melt lava lamp case, neon frog phone case, vaporwave phone case"),
+    # 10 Sardinhas Designs
+    ("CASE-SARDPT-001", "6ace0af22dcac9d9f107b986", "portuguese sardine case, porto classic sardines, azulejo tile phone case, olive oil tin case, portugal souvenir case"),
+    ("CASE-SARDPT-002", "6ace0af82691ab33cb0ef08c", "galo de barcelos case, portuguese rooster phone case, spicy sardine case, piri piri phone case, portuguese folk art case"),
+    ("CASE-SARDPT-003", "6ace0afd2691ab33cb0ef08f", "algarve fisherman case, vintage nautical phone case, sardine haul tin case, portugal beach phone case, sea lover tough case"),
+    ("CASE-SARDPT-004", "6ace0b012d4ab720af0476be", "fado guitar phone case, alfama lisbon phone case, sardinha fado case, romantic portugal case, vintage midnight tin case"),
+    ("CASE-SARDPT-005", "6ace0b062dcac9d9f107b996", "tram 28 lisbon case, yellow tram phone case, sardinhas de lisboa case, portugal travel poster case, vintage tram case"),
+    ("CASE-SARDPT-006", "6ace0b0a2dcac9d9f107b99d", "azulejo tile mosaic case, silver pilchard phone case, blue white ceramic tile case, delft tile phone case, portuguese tile case"),
+    ("CASE-SARDPT-007", "6ace0b0e2d4ab720af0476c7", "belem tower phone case, maritime cannery label case, vintage lisbon fortress case, royal conservas case, portugal history case"),
+    ("CASE-SARDPT-008", "6ace0b112dcac9d9f107b9a9", "grilled pepper sardine case, santos populares phone case, sardinha com pimentos case, rustic food phone case, lisbon fest case"),
+    ("CASE-SARDPT-009", "6ace0b152dcac9d9f107b9ad", "madeira island phone case, passion fruit sardine case, botanical art nouveau case, tropical island phone case, exotic fruit case"),
+    ("CASE-SARDPT-010", "6ace0b1a2e6f7187920a144b", "cascais riviera picnic case, 1950s gouache phone case, retro sunglasses beach case, luxury coastal vacation case, beach picnic case"),
+]
 
 PINTEREST_OFFICIAL_HEADERS = [
     "Title",
@@ -23,202 +55,108 @@ PINTEREST_OFFICIAL_HEADERS = [
     "Keywords",
 ]
 
-base_date = datetime.utcnow().date() + timedelta(days=1)
+def main():
+    base_date = datetime.now(timezone.utc).date() + timedelta(days=1)
+    rows = []
 
-FROG_COLLECTION_PINS = [
-    {
-        "Title": "Surreal Suncatcher Vitrail Mini Frog Floating Lava Lamp Tough Case",
-        "Media URL": "https://d123s6f1z9g2wk.cloudfront.net/files/2026/10/20261012133501-1f1c641b-96f5-69c8-9f99-7ae38c3b7b9e.png",
-        "Pinterest board": "Phone Cases",
-        "Thumbnail": "",
-        "Description": (
-            "Surreal stained glass vitrail suncatcher phone case featuring an adorable mini green frog floating "
-            "peacefully inside a glowing molten lava lamp under rainbow prism light. Dual-layer impact-resistant "
-            "polycarbonate outer shell with shock-absorbing TPU inner liner. Fits 34 iPhone & Samsung Galaxy models."
-        ),
-        "Link": "https://www.etsy.com/shop/CraftCasesStudio?utm_source=pinterest&utm_medium=social&utm_campaign=suncatcher_frog_002",
-        "Publish date": (base_date + timedelta(days=0)).isoformat(),
-        "Keywords": (
-            "suncatcher frog, vitrail phone case, floating frog case, lava lamp case, stained glass frog, "
-            "cute frog phone case, iphone 18 pro max, samsung galaxy s26, tough phone case, rainbow prism case, "
-            "groovy retro frog, cottagecore frog, frog lover gift"
-        ),
-    },
-    {
-        "Title": "Gothic Cathedral Vitrail Wizard Frog Lava Potion Lamp Tough Case",
-        "Media URL": "https://d123s6f1z9g2wk.cloudfront.net/files/2026/10/20261012133905-1f1c6424-ae2e-6ec4-904c-1ee442ad1e48.png",
-        "Pinterest board": "Phone Cases",
-        "Thumbnail": "",
-        "Description": (
-            "Gothic cathedral stained glass vitrail phone case featuring a wise wizard frog in a celestial purple hat "
-            "holding a crystal staff beside a bubbling molten lava potion lamp beneath cathedral rose windows. "
-            "Premium dual-layer Tough Case with impact-resistant polycarbonate outer shell."
-        ),
-        "Link": "https://www.etsy.com/shop/CraftCasesStudio?utm_source=pinterest&utm_medium=social&utm_campaign=wizard_frog_003",
-        "Publish date": (base_date + timedelta(days=1)).isoformat(),
-        "Keywords": (
-            "wizard frog case, gothic stained glass, vitrail phone case, potion lava lamp, witchy frog case, "
-            "cathedral vitrail, iphone 18 pro max, samsung galaxy s26, tough phone case, dark academia frog, "
-            "fantasy frog cover, cottagecore witch, magical frog gift"
-        ),
-    },
-    {
-        "Title": "Celestial Tarot Card Vitrail Moon Frog Sacred Lava Lamp Tough Case",
-        "Media URL": "https://d123s6f1z9g2wk.cloudfront.net/files/2026/10/20261012133954-1f1c6426-811f-603a-a834-2a95200fac38.png",
-        "Pinterest board": "Phone Cases",
-        "Thumbnail": "",
-        "Description": (
-            "Celestial tarot card stained glass vitrail phone case featuring a mystical moon frog perched on a golden "
-            "crescent moon beside a glowing sacred lava lamp under midnight constellations and luna moths. "
-            "Premium dual-layer Tough Case with shock-absorbing TPU liner."
-        ),
-        "Link": "https://www.etsy.com/shop/CraftCasesStudio?utm_source=pinterest&utm_medium=social&utm_campaign=tarot_frog_004",
-        "Publish date": (base_date + timedelta(days=2)).isoformat(),
-        "Keywords": (
-            "celestial tarot case, moon frog case, vitrail phone case, stained glass moon, sacred lava lamp, "
-            "tarot card case, iphone 18 pro max, samsung galaxy s26, tough phone case, luna moth case, "
-            "witchy aesthetic, mystical frog gift, zodiac phone case"
-        ),
-    },
-    {
-        "Title": "Western Disco Vitrail 70s Cowboy Frog Desert Lava Lamp Tough Case",
-        "Media URL": "https://d123s6f1z9g2wk.cloudfront.net/files/2026/10/20261012134043-1f1c6428-58bb-654c-891e-16ec86c827dd.png",
-        "Pinterest board": "Phone Cases",
-        "Thumbnail": "",
-        "Description": (
-            "Western disco 1970s stained glass vitrail phone case featuring a groovy cowboy frog in a ten-gallon Stetson hat "
-            "under a sparkling disco ball beside a desert saguaro cactus lava lamp. "
-            "Impact-resistant dual-layer Tough Case with glossy vibrant backplate."
-        ),
-        "Link": "https://www.etsy.com/shop/CraftCasesStudio?utm_source=pinterest&utm_medium=social&utm_campaign=cowboy_frog_005",
-        "Publish date": (base_date + timedelta(days=3)).isoformat(),
-        "Keywords": (
-            "cowboy frog case, western disco case, 70s retro vitrail, desert lava lamp, stained glass frog, "
-            "disco cowgirl case, iphone 18 pro max, samsung galaxy s26, tough phone case, country western frog, "
-            "groovy 70s case, yall frog gift, rodeo frog cover"
-        ),
-    },
-    {
-        "Title": "70s Vinyl Lo-Fi DJ Frog Bubbling Lava Lamp Vitrail Tough Case",
-        "Media URL": "https://d123s6f1z9g2wk.cloudfront.net/files/2026/10/20261012134129-1f1c642a-121e-6326-baa6-32424d5077df.png",
-        "Pinterest board": "Phone Cases",
-        "Thumbnail": "",
-        "Description": (
-            "Chill lo-fi 1970s stained glass vitrail phone case featuring a retro audiophile DJ frog wearing gold headphones "
-            "spinning vintage vinyl on a turntable beside a bubbling warm amber lava lamp. "
-            "Dual-layer shock-absorbing protective Tough Case."
-        ),
-        "Link": "https://www.etsy.com/shop/CraftCasesStudio?utm_source=pinterest&utm_medium=social&utm_campaign=lofi_frog_006",
-        "Publish date": (base_date + timedelta(days=4)).isoformat(),
-        "Keywords": (
-            "lofi frog case, dj frog phone case, vinyl record case, 70s audio vitrail, bubbling lava lamp, "
-            "retro audiophile, iphone 18 pro max, samsung galaxy s26, tough phone case, chill lofi hip hop, "
-            "stained glass frog, music lover gift, turntable case"
-        ),
-    },
-    {
-        "Title": "UV Blacklight Cyber-Vitrail Acid-Melt Lava Lamp Frog Tough Case",
-        "Media URL": "https://d123s6f1z9g2wk.cloudfront.net/files/2026/10/20261012134216-1f1c642b-d1cf-6426-874a-32424d5077df.png",
-        "Pinterest board": "Phone Cases",
-        "Thumbnail": "",
-        "Description": (
-            "Electric neon UV blacklight psychedelic cyber-vitrail phone case featuring an acid-melt trippy cyber frog "
-            "bathed in glowing fluorescent magenta, electric cyan, and neon green lava droplets. "
-            "Dual-layer ultra-durable Tough Case."
-        ),
-        "Link": "https://www.etsy.com/shop/CraftCasesStudio?utm_source=pinterest&utm_medium=social&utm_campaign=cyber_frog_007",
-        "Publish date": (base_date + timedelta(days=5)).isoformat(),
-        "Keywords": (
-            "uv blacklight case, cyber vitrail case, neon frog case, acid melt lava lamp, psychedelic phone cover, "
-            "trippy rave case, iphone 18 pro max, samsung galaxy s26, tough phone case, fluorescent frog, "
-            "edm rave aesthetic, electric neon case, cyberpunk frog"
-        ),
-    },
-]
+    print("Fetching live product details from Printify...")
+    for idx, (sku, pid, tags) in enumerate(PRODUCTS):
+        req = urllib.request.Request(f"{BASE_URL}/shops/{SHOP_ID}/products/{pid}.json", headers=HEADERS)
+        try:
+            with urllib.request.urlopen(req) as resp:
+                data = json.loads(resp.read().decode())
+        except Exception as e:
+            print(f"Error fetching {sku} ({pid}): {e}")
+            continue
 
+        title = data.get("title", f"CaseCraft Studio {sku} Tough Phone Case")[:100]
+        images = data.get("images", [])
+        primary_url = images[0].get("src", "") if images else ""
 
-def build_single_mockup_excel(output_paths: list[str]) -> None:
+        desc_raw = data.get("description", "")
+        # Clean HTML tags if any
+        import re
+        clean_desc = re.sub(r"<[^>]+>", " ", desc_raw)
+        clean_desc = re.sub(r"\s+", " ", clean_desc).strip()
+        if not clean_desc or len(clean_desc) < 20:
+            clean_desc = f"Handcrafted premium dual-layer tough phone case featuring {title}. Impact-resistant polycarbonate outer shell with shock-absorbing TPU inner bumper. Available for iPhone and Samsung Galaxy."
+        clean_desc = clean_desc[:495]
+
+        publish_date = (base_date + timedelta(days=idx)).strftime("%Y-%m-%d")
+
+        rows.append({
+            "Title": title,
+            "Media URL": primary_url,
+            "Pinterest board": "Phone Cases",
+            "Thumbnail": "",
+            "Description": clean_desc,
+            "Link": "https://www.etsy.com/shop/CraftCasesStudio",
+            "Publish date": publish_date,
+            "Keywords": tags,
+        })
+        print(f"  [{idx+1}/{len(PRODUCTS)}] Added {sku}: {title[:35]} (Media: {primary_url[:45]}...)")
+
+    # 1. Write Excel (.xlsx)
     wb = Workbook()
     ws = wb.active
-    ws.title = "Pinterest_Single_Mockup"
+    ws.title = "Pinterest Pins"
 
-    header_fill = PatternFill(start_color="E60023", end_color="E60023", fill_type="solid")
-    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-    body_font = Font(name="Calibri", size=10, color="111827")
-    link_font = Font(name="Calibri", size=10, color="1D4ED8", underline="single")
+    # Styling
+    header_fill = PatternFill(start_color="111827", end_color="111827", fill_type="solid")
+    header_font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+    data_font = Font(name="Segoe UI", size=10, color="1F2937")
     thin_border = Border(
-        left=Side(style="thin", color="D1D5DB"),
-        right=Side(style="thin", color="D1D5DB"),
-        top=Side(style="thin", color="D1D5DB"),
-        bottom=Side(style="thin", color="D1D5DB"),
+        left=Side(style="thin", color="E5E7EB"),
+        right=Side(style="thin", color="E5E7EB"),
+        top=Side(style="thin", color="E5E7EB"),
+        bottom=Side(style="thin", color="E5E7EB"),
     )
+    alt_fill = PatternFill(start_color="F9FAFB", end_color="F9FAFB", fill_type="solid")
 
-    # Row 1: Official Pinterest Bulk Upload Headers
     ws.append(PINTEREST_OFFICIAL_HEADERS)
-    ws.row_dimensions[1].height = 26
-
     for col_idx in range(1, len(PINTEREST_OFFICIAL_HEADERS) + 1):
         cell = ws.cell(row=1, column=col_idx)
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        cell.border = thin_border
 
-    # Data Rows: Strictly 1 Mockup Row per Product (the Primary iPhone 18 Pro Max Mockup)
-    for r_idx, pin in enumerate(FROG_COLLECTION_PINS, start=2):
-        row_values = [pin[h] for h in PINTEREST_OFFICIAL_HEADERS]
-        ws.append(row_values)
-        ws.row_dimensions[r_idx].height = 54
+    ws.row_dimensions[1].height = 28
 
-        for col_idx, header_name in enumerate(PINTEREST_OFFICIAL_HEADERS, start=1):
-            cell = ws.cell(row=r_idx, column=col_idx)
+    for r_idx, row_dict in enumerate(rows, start=2):
+        row_vals = [row_dict[h] for h in PINTEREST_OFFICIAL_HEADERS]
+        ws.append(row_vals)
+        ws.row_dimensions[r_idx].height = 22
+        for c_idx in range(1, len(PINTEREST_OFFICIAL_HEADERS) + 1):
+            cell = ws.cell(row=r_idx, column=c_idx)
+            cell.font = data_font
             cell.border = thin_border
-            if header_name in ("Media URL", "Link"):
-                cell.font = link_font
-                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=False)
+            if r_idx % 2 == 1:
+                cell.fill = alt_fill
+            if c_idx in (1, 5, 8):
+                cell.alignment = Alignment(horizontal="left", vertical="center")
             else:
-                cell.font = body_font
-                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+                cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    col_widths = {
-        "Title": 48,
-        "Media URL": 75,
-        "Pinterest board": 20,
-        "Thumbnail": 14,
-        "Description": 64,
-        "Link": 65,
-        "Publish date": 16,
-        "Keywords": 60,
-    }
-    for col_idx, header_name in enumerate(PINTEREST_OFFICIAL_HEADERS, start=1):
-        col_letter = get_column_letter(col_idx)
-        ws.column_dimensions[col_letter].width = col_widths.get(header_name, 24)
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or "")) for cell in col)
+        col_letter = get_column_letter(col[0].column)
+        ws.column_dimensions[col_letter].width = min(max(max_len + 3, 14), 50)
 
-    ws.freeze_panes = "A2"
+    xlsx_path = "CaseCraft_Pinterest_Single_Mockup.xlsx"
+    wb.save(xlsx_path)
+    wb.save(f"public/{xlsx_path}")
+    print(f"\nSaved Excel workbook ({len(rows)} single mockup rows) -> {xlsx_path}")
+    print(f"Saved Excel workbook ({len(rows)} single mockup rows) -> public/{xlsx_path}")
 
-    for path in output_paths:
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        wb.save(path)
-        print(f"Saved Excel workbook ({len(FROG_COLLECTION_PINS)} single mockup rows) -> {path}")
-
-
-def build_single_mockup_csv(output_paths: list[str]) -> None:
-    for path in output_paths:
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        with open(path, "w", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=PINTEREST_OFFICIAL_HEADERS, quoting=csv.QUOTE_MINIMAL)
+    # 2. Write CSV (.csv)
+    csv_path = "CaseCraft_Pinterest_Single_Mockup.csv"
+    for out_p in [csv_path, f"public/{csv_path}"]:
+        with open(out_p, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=PINTEREST_OFFICIAL_HEADERS)
             writer.writeheader()
-            for pin in FROG_COLLECTION_PINS:
-                writer.writerow(pin)
-        print(f"Saved CSV file ({len(FROG_COLLECTION_PINS)} single mockup rows) -> {path}")
-
+            for r in rows:
+                writer.writerow(r)
+        print(f"Saved CSV file ({len(rows)} single mockup rows) -> {out_p}")
 
 if __name__ == "__main__":
-    build_single_mockup_excel([
-        "CaseCraft_Pinterest_Single_Mockup.xlsx",
-        "public/CaseCraft_Pinterest_Single_Mockup.xlsx",
-    ])
-    build_single_mockup_csv([
-        "CaseCraft_Pinterest_Single_Mockup.csv",
-        "public/CaseCraft_Pinterest_Single_Mockup.csv",
-    ])
+    main()
